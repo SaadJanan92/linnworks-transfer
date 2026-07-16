@@ -315,7 +315,8 @@
 
 <script>
   // ── State ──────────────────────────────────────────────────────────────────
-  const items = []; // { stockItemId, sku, title, qty, locationId, status, error }
+  const items = [];
+  let binRackContents = null; // { binRackId, items: { stockItemId → { qty, sku } } }
 
   // ── On load ────────────────────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', async () => {
@@ -350,9 +351,19 @@
   }
 
   // ── Keyboard/scan flow ─────────────────────────────────────────────────────
-  document.getElementById('fromBin').addEventListener('keydown', e => {
+  document.getElementById('fromBin').addEventListener('keydown', async e => {
     if (e.key === 'Enter' && e.target.value.trim()) {
       e.target.classList.add('filled');
+      const binRack = e.target.value.trim();
+      const locationId = document.getElementById('locationSelect').value;
+      // Load bin rack contents for validation
+      binRackContents = null;
+      try {
+        binRackContents = await api(`/api/binrack-items?locationId=${encodeURIComponent(locationId)}&binRack=${encodeURIComponent(binRack)}`);
+        toast(`Bin rack loaded: ${Object.keys(binRackContents.items).length} SKUs`, 'ok');
+      } catch (_) {
+        toast('Could not load bin rack — scanning without validation', '');
+      }
       document.getElementById('skuInput').focus();
     }
   });
@@ -426,30 +437,49 @@
 
       playSuccess();
 
-      // Available qty from search result
-      const availableQty = firstLevel ? (firstLevel.available || 0) : 0;
+      // Bin rack level qty validation (most accurate — from GetBinrackSkus)
+      let binRackQty = null;
+      if (binRackContents && binRackContents.items) {
+        const entry = binRackContents.items[String(item.stockItemId).toLowerCase()];
+        binRackQty = entry ? entry.qty : 0;
+      }
+
+      // If we know bin rack contents and qty is 0, item isn't in this bin rack
+      if (binRackQty !== null && binRackQty === 0) {
+        playError();
+        preview.className = 'notfound';
+        preview.innerHTML = `
+          <div class="item-title">⚠ Not in this bin rack</div>
+          <div class="item-sku">${esc(item.title)}</div>
+          <div style="font-size:12px;color:#888;margin-top:4px;">Check the correct bin rack for this item</div>`;
+        document.getElementById('skuInput').value = '';
+        document.getElementById('skuInput').focus();
+        return;
+      }
 
       const existing = items.find(i => i.sku.trim().toLowerCase() === item.sku.trim().toLowerCase());
       if (existing) {
         const newTotal = existing.qty + qty;
-        if (availableQty > 0 && newTotal > availableQty) {
+        const maxQty = binRackQty || 9999;
+        if (newTotal > maxQty) {
           playError();
-          toast(`Only ${availableQty} available — already added ${existing.qty}`, 'err');
+          toast(`Only ${maxQty} in this bin rack — already added ${existing.qty}`, 'err');
         } else {
           existing.qty = newTotal;
           toast(`+${qty} → ${item.sku} (total: ${newTotal})`, 'ok');
         }
       } else {
-        if (availableQty > 0 && qty > availableQty) {
+        const maxQty = binRackQty || 9999;
+        if (qty > maxQty) {
           playError();
-          toast(`Only ${availableQty} available for this SKU`, 'err');
+          toast(`Only ${maxQty} available in this bin rack`, 'err');
         } else {
           items.push({
             stockItemId:  item.stockItemId,
             sku:          item.sku.trim(),
             title:        item.title,
             qty,
-            availableQty,
+            maxQty,
             locationId:   realLocId,
             locationName: realLocName,
             status:       'pending',
