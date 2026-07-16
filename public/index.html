@@ -453,7 +453,10 @@ tr:hover td { background: #fafbff; }
   <div style="background:white;border-radius:14px;width:100%;max-width:600px;margin:0 auto;">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #f0f2f5;">
       <div style="font-size:16px;font-weight:700;">📋 Transfer History</div>
-      <button onclick="closeHistory()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;padding:0;">✕</button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="exportCSV()" style="background:#00c896;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">⬇ Export Excel</button>
+        <button onclick="closeHistory()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;padding:0;">✕</button>
+      </div>
     </div>
     <div id="historyBody" style="padding:12px 16px;max-height:70vh;overflow-y:auto;"></div>
   </div>
@@ -543,6 +546,41 @@ async function showHistory() {
 
 function closeHistory() {
   document.getElementById('historyModal').style.display = 'none';
+}
+
+async function exportCSV() {
+  try {
+    const logs = await api('/api/logs?limit=50000');
+    if (!logs.length) { toast('No history to export', 'err'); return; }
+
+    const rows = [['Date', 'Time', 'User', 'SKU', 'Item Title', 'Qty', 'From Bin Rack', 'To Bin Rack']];
+    for (const entry of logs) {
+      const dt = new Date(entry.timestamp);
+      const date = dt.toLocaleDateString('en-GB');
+      const time = dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      rows.push([
+        date, time,
+        entry.user || '',
+        entry.sku || '',
+        entry.title || '',
+        entry.qty || '',
+        entry.fromBinRack || '',
+        entry.toBinRack || ''
+      ]);
+    }
+
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transfer-history-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Downloading…', 'ok');
+  } catch (e) {
+    toast('Export failed', 'err');
+  }
 }
 
 // ── Auth state ─────────────────────────────────────────────────────────────
