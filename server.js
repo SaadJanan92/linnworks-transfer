@@ -86,7 +86,19 @@ app.get('/api/health', async (req, res) => {
 // Returns all fulfilment locations (warehouses)
 app.get('/api/locations', async (req, res) => {
   try {
-    const data = await lwApi('Inventory/GetWarehouseLocations');
+    // Try multiple endpoint variations
+    let data;
+    try {
+      data = await lwApi('Inventory/GetWarehouseLocations');
+    } catch (e1) {
+      try {
+        data = await lwApi('Stock/GetStockLocations');
+      } catch (e2) {
+        data = await lwApi('Locations/GetAll');
+      }
+    }
+    // Normalise to array of { StockLocationId, LocationName }
+    if (!Array.isArray(data)) data = data.Results || data.StockLocations || [];
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
