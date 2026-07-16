@@ -3,6 +3,7 @@ const fetch = require('node-fetch');
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,8 +18,21 @@ const APP_SECRET = process.env.LINNWORKS_APP_SECRET;
 const APP_TOKEN = process.env.LINNWORKS_TOKEN;
 
 // ─── Staff session store ──────────────────────────────────────────────────────
-// activeSessions: token → { username, displayName, expiry }
 const activeSessions = new Map();
+
+// ─── Transfer log ─────────────────────────────────────────────────────────────
+const LOG_FILE = path.join('/tmp', 'transfer-log.json');
+
+function readLog() {
+  try { return JSON.parse(fs.readFileSync(LOG_FILE, 'utf8')); } catch (_) { return []; }
+}
+
+function appendLog(entry) {
+  const log = readLog();
+  log.unshift(entry); // newest first
+  if (log.length > 2000) log.length = 2000;
+  try { fs.writeFileSync(LOG_FILE, JSON.stringify(log)); } catch (_) {}
+}
 
 // ─── POST /api/login ──────────────────────────────────────────────────────────
 // Validates against STAFF_USERS env var set in Render
@@ -47,6 +61,13 @@ app.post('/api/login', (req, res) => {
   });
 
   res.json({ token, displayName: user.displayName || username });
+});
+
+// ─── GET /api/logs ────────────────────────────────────────────────────────────
+app.get('/api/logs', requireAuth, (req, res) => {
+  const limit = parseInt(req.query.limit) || 200;
+  const log = readLog().slice(0, limit);
+  res.json(log);
 });
 
 // ─── POST /api/logout ─────────────────────────────────────────────────────────
@@ -341,7 +362,7 @@ app.post('/api/transfer', requireAuth, async (req, res) => {
 
     const staffName = req.user ? req.user.displayName : 'Unknown';
     const moveRes = await lwPost('Stock/CreateWarehouseMove',
-      `request=${encodeURIComponent(JSON.stringify({ BatchInventoryId: batchInventoryId, BinrackIdDestination: dstId, Quantity: qty, TxType: 'InTransit', Note: `Transferred by: ${staffName}` }))}`
+      `request=${encodeURIComponent(JSON.stringify({ BatchInventoryId: batchInventoryId, BinrackIdDestination: dstId, Quantity: qty, TxType: 'InTransit', Note: `Transferred by: ${staffName}`, Notes: `Transferred by: ${staffName}`, UserName: staffName, ChangeNote: `Transferred by: ${staffName}` }))}`
     );
 
     const moveId = moveRes.WarehouseMove && moveRes.WarehouseMove.MoveId;
@@ -358,6 +379,18 @@ app.post('/api/transfer', requireAuth, async (req, res) => {
         } catch (_) {}
       }
     }
+
+    // ── Log the transfer ───────────────────────────────────────────────────────
+    appendLog({
+      timestamp: new Date().toISOString(),
+      user: req.user ? req.user.displayName : 'Unknown',
+      fromBinRack,
+      toBinRack,
+      locationId,
+      qty,
+      stockItemId,
+      moveId: moveId || null
+    });
 
     res.json({ success: true, srcBinRackId: srcId, dstBinRackId: dstId, batchInventoryId, moveId });
   } catch (e) {
