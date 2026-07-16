@@ -408,25 +408,26 @@
       const realLocId     = firstLevel ? firstLevel.locationId   : null;
       const realLocName   = firstLevel ? firstLevel.locationName : null;
 
-      // Check if item is actually in the FROM bin rack
-      const fromBin = document.getElementById('fromBin').value.trim().toUpperCase();
+      // Check bin rack — only reject if item has a known bin rack that explicitly doesn't match
+      // WMS locations return empty binRack from stock level (tracked at batch level), so we skip the check in that case
+      const fromBinVal = document.getElementById('fromBin').value.trim().toUpperCase();
       const itemBinRack = firstLevel && firstLevel.binRack ? firstLevel.binRack.toUpperCase() : '';
-      const isInFromBin = !fromBin || itemBinRack === fromBin;
+      const wrongBin = fromBinVal && itemBinRack && itemBinRack !== fromBinVal;
 
-      if (isInFromBin) {
-        playSuccess();
-      } else {
+      if (wrongBin) {
         playError();
         preview.className = 'notfound';
         preview.innerHTML = `
-          <div class="item-title">⚠ Not in ${esc(fromBin)}</div>
+          <div class="item-title">⚠ Not in ${esc(fromBinVal)}</div>
           <div class="item-sku">${esc(item.title)}</div>
-          <div style="font-size:12px;color:#888;margin-top:4px;">Currently in: <strong>${esc(firstLevel.binRack || 'Unknown')}</strong></div>`;
+          <div style="font-size:12px;color:#888;margin-top:4px;">Currently in: <strong>${esc(firstLevel.binRack)}</strong></div>`;
         document.getElementById('skuInput').value = '';
         document.getElementById('qtyInput').value = 1;
         document.getElementById('skuInput').focus();
         return;
       }
+
+      playSuccess();
 
       const existing = items.find(i => i.sku === sku);
       if (existing) {
