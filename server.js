@@ -21,67 +21,32 @@ const APP_TOKEN = process.env.LINNWORKS_TOKEN;
 const activeSessions = new Map();
 
 // ─── POST /api/login ──────────────────────────────────────────────────────────
-// Authenticates directly against Linnworks using the user's email & password
-app.post('/api/login', async (req, res) => {
+// Validates against STAFF_USERS env var set in Render
+// Format: {"ali":{"password":"1234","displayName":"Ali Khan"},"sara":{"password":"5678","displayName":"Sara Ahmed"}}
+app.post('/api/login', (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
   }
 
-  try {
-    const params = new URLSearchParams({
-      Email: username,
-      Password: password,
-      ApplicationId: APP_ID,
-      ApplicationSecret: APP_SECRET
-    });
-
-    const lwRes = await fetch('https://api.linnworks.net/api/Auth/Multilogin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString()
-    });
-
-    const rawText = await lwRes.text();
-    console.log('Linnworks Multilogin status:', lwRes.status, 'body:', rawText.substring(0, 500));
-
-    if (!lwRes.ok) {
-      let lwMsg = 'Invalid username or password';
-      try { const j = JSON.parse(rawText); lwMsg = j.Message || lwMsg; } catch(_) {}
-      return res.status(401).json({ error: lwMsg });
-    }
-
-    let lwData;
-    try { lwData = JSON.parse(rawText); } catch(_) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    // Multilogin returns an array of accounts — pick first one
-    const accounts = Array.isArray(lwData) ? lwData : [lwData];
-    const account = accounts[0];
-
-    // Accept if we got any account object back (even without Token — Linnworks
-    // may use a different field name or require a second step)
-    if (!account) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    // Build display name from Linnworks response fields
-    const displayName = account.UserName || account.FullName || account.AccountName ||
-      account.Name || account.Email || username;
-
-    const token = crypto.randomBytes(32).toString('hex');
-    activeSessions.set(token, {
-      username: username.toLowerCase(),
-      displayName,
-      expiry: Date.now() + 8 * 60 * 60 * 1000 // 8 hours
-    });
-
-    res.json({ token, displayName });
-  } catch (e) {
-    console.error('Login error:', e.message);
-    res.status(500).json({ error: `Login failed: ${e.message}` });
+  let users = {};
+  try { users = JSON.parse(process.env.STAFF_USERS || '{}'); } catch (_) {
+    return res.status(500).json({ error: 'Staff users not configured — contact admin' });
   }
+
+  const user = users[username.toLowerCase()];
+  if (!user || user.password !== password) {
+    return res.status(401).json({ error: 'Wrong username or password' });
+  }
+
+  const token = crypto.randomBytes(32).toString('hex');
+  activeSessions.set(token, {
+    username: username.toLowerCase(),
+    displayName: user.displayName || username,
+    expiry: Date.now() + 8 * 60 * 60 * 1000 // 8 hours
+  });
+
+  res.json({ token, displayName: user.displayName || username });
 });
 
 // ─── POST /api/logout ─────────────────────────────────────────────────────────
