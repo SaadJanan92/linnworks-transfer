@@ -385,21 +385,25 @@
           `).join('')}
         </div>`;
 
-      // Add to list
-      const locationId = document.getElementById('locationSelect').value;
+      // Use the real locationId/name from search result (not the dropdown placeholder)
+      const firstLevel    = (item.stockLevels && item.stockLevels[0]) ? item.stockLevels[0] : null;
+      const realLocId     = firstLevel ? firstLevel.locationId   : null;
+      const realLocName   = firstLevel ? firstLevel.locationName : null;
+
       const existing = items.find(i => i.sku === sku);
       if (existing) {
         existing.qty += qty;
         toast(`+${qty} added to ${sku} (total: ${existing.qty})`, 'ok');
       } else {
         items.push({
-          stockItemId: item.stockItemId,
-          sku:         item.sku,
-          title:       item.title,
+          stockItemId:  item.stockItemId,
+          sku:          item.sku,
+          title:        item.title,
           qty,
-          locationId,
-          status:      'pending',
-          error:       null
+          locationId:   realLocId,
+          locationName: realLocName,
+          status:       'pending',
+          error:        null
         });
         toast(`Added: ${item.title}`, 'ok');
       }
@@ -479,11 +483,12 @@
 
       try {
         await api('/api/transfer', 'POST', {
-          stockItemId: item.stockItemId,
-          locationId:  item.locationId || document.getElementById('locationSelect').value,
-          fromBinRack: from,
-          toBinRack:   to,
-          qty:         item.qty
+          stockItemId:  item.stockItemId,
+          locationId:   item.locationId,
+          locationName: item.locationName,
+          fromBinRack:  from,
+          toBinRack:    to,
+          qty:          item.qty
         });
         item.status = 'success';
       } catch (e) {
