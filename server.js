@@ -27,7 +27,7 @@ async function getSession() {
     Token:             APP_TOKEN
   });
 
-  const res  = await fetch('https://api.linnworks.net/api/Auth/AuthorizeByApplication', {
+  const res = await fetch('https://api.linnworks.net/api/Auth/AuthorizeByApplication', {
     method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body:    params.toString()
@@ -48,80 +48,20 @@ async function getSession() {
   return session;
 }
 
-// ─── Helper: call Linnworks API ───────────────────────────────────────────────
-async function lwApi(endpoint, body = {}) {
-  const s   = await getSession();
-  const url = `${s.server}/api/${endpoint}`;
-
-  const res = await fetch(url, {
+// ─── Helper: POST to Linnworks API ───────────────────────────────────────────
+async function lwPost(endpoint, bodyStr) {
+  const s = await getSession();
+  const res = await fetch(`${s.server}/api/${endpoint}`, {
     method:  'POST',
-    headers: {
-      'Content-Type':    'application/x-www-form-urlencoded',
-      'Authorization':   s.token
-    },
-    body: new URLSearchParams(
-      Object.entries(body).map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])
-    ).toString()
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
+    body:    bodyStr
   });
-
   if (!res.ok) {
     const txt = await res.text();
     throw new Error(`${endpoint} failed: ${res.status} ${txt}`);
   }
-
   return res.json();
 }
-
-// ─── GET /api/debug?sku=XXX ───────────────────────────────────────────────────
-app.get('/api/debug', async (req, res) => {
-  const sku = (req.query.sku || 'test').trim();
-  try {
-    const s = await getSession();
-    const results = {};
-    const hForm = { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token };
-
-    // Test A: GetStockItemsFull — correct JSON-encoded string enums, pageNumber
-    try {
-      const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const dataReq = encodeURIComponent(JSON.stringify(['StockLevels']));
-      const searchT  = encodeURIComponent(JSON.stringify(['SKU']));
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&pageNumber=1&dataRequirements=${dataReq}&searchTypes=${searchT}`;
-      const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.A_correctEnums = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.A_correctEnums = { error: e.message }; }
-
-    // Test B: GetStockItems — keyWord (capital W), pageNumber, locationId empty
-    try {
-      const url = `${s.server}/api/Stock/GetStockItems`;
-      const body = `keyWord=${encodeURIComponent(sku)}&locationId=&entriesPerPage=5&pageNumber=1&excludeComposites=false&excludeVariations=false&excludeBatches=false`;
-      const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.B_keyWordCapW = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.B_keyWordCapW = { error: e.message }; }
-
-    // Test C: GetStockItemsFull with multiple dataRequirements
-    try {
-      const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const dataReq = encodeURIComponent(JSON.stringify(['StockLevels', 'Pricing']));
-      const searchT  = encodeURIComponent(JSON.stringify(['SKU']));
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&pageNumber=1&dataRequirements=${dataReq}&searchTypes=${searchT}`;
-      const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.C_multiDataReq = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.C_multiDataReq = { error: e.message }; }
-
-    // Test D: GetStockItemsByKey with JSON object
-    try {
-      const url = `${s.server}/api/Stock/GetStockItemsByKey`;
-      const stockIdentifier = encodeURIComponent(JSON.stringify({ keyWord: sku, locationId: null }));
-      const body = `stockIdentifier=${stockIdentifier}`;
-      const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.D_byKey = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.D_byKey = { error: e.message }; }
-
-    res.json({ server: s.server, results });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // ─── GET /api/health ──────────────────────────────────────────────────────────
 app.get('/api/health', async (req, res) => {
@@ -134,45 +74,38 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ─── GET /api/locations ───────────────────────────────────────────────────────
-// Returns all fulfilment locations (warehouses)
 app.get('/api/locations', async (req, res) => {
   try {
-    let data;
-    const endpoints = [
-      'Inventory/GetInventoryLocations',
-      'Inventory/GetWarehouseLocations',
-      'Stock/GetStockLocations',
-      'Locations/GetAll'
-    ];
-    let lastError = '';
-    for (const ep of endpoints) {
+    const s = await getSession();
+    // Try the correct Inventory locations endpoint
+    let data = null;
+    for (const ep of ['Inventory/GetInventoryLocations', 'Stock/GetStockLocations', 'Locations/GetAll']) {
       try {
-        data = await lwApi(ep);
-        if (data) break;
-      } catch (e) {
-        lastError = e.message;
-      }
+        const r = await fetch(`${s.server}/api/${ep}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
+          body: ''
+        });
+        if (r.ok) { data = await r.json(); break; }
+      } catch (_) {}
     }
 
-    if (data) {
-      if (!Array.isArray(data)) data = data.Results || data.StockLocations || data.Locations || Object.values(data);
-      // Normalise field names
-      const normalised = data.map(l => ({
-        StockLocationId: l.StockLocationId || l.LocationId || l.Id || '',
-        LocationName:    l.LocationName || l.Name || l.Title || ''
-      })).filter(l => l.LocationName);
-      return res.json(normalised);
+    if (data && (Array.isArray(data) ? data.length : true)) {
+      const list = Array.isArray(data) ? data : (data.Results || data.StockLocations || []);
+      return res.json(list.map(l => ({
+        StockLocationId: l.StockLocationId || l.LocationId || '',
+        LocationName:    l.LocationName || l.Name || ''
+      })).filter(l => l.LocationName));
     }
 
-    // Fallback: return known locations from account
-    console.warn('All location endpoints failed, using known fallback. Last error:', lastError);
+    // Fallback: known locations from this account
     res.json([
-      { StockLocationId: 'default',  LocationName: 'Default' },
-      { StockLocationId: 'wms',      LocationName: 'WMS' },
-      { StockLocationId: 'wms-new',  LocationName: 'WMS New' },
-      { StockLocationId: 'bradford', LocationName: 'Janan Bradford Store' },
-      { StockLocationId: 'fba',      LocationName: 'Janan Fragrances Amazon FBA' },
-      { StockLocationId: 'initial',  LocationName: 'Initial Stock' }
+      { StockLocationId: '28f60e93-7de6-4983-9d2d-6631d9d2a8c1', LocationName: 'WMS New' },
+      { StockLocationId: '',                                       LocationName: 'WMS' },
+      { StockLocationId: '',                                       LocationName: 'Default' },
+      { StockLocationId: '',                                       LocationName: 'Janan Bradford Store' },
+      { StockLocationId: '',                                       LocationName: 'Janan Fragrances Amazon FBA' },
+      { StockLocationId: '',                                       LocationName: 'Initial Stock' }
     ]);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -180,71 +113,35 @@ app.get('/api/locations', async (req, res) => {
 });
 
 // ─── GET /api/search?sku=SKU123 ───────────────────────────────────────────────
-// Search for a stock item by SKU
 app.get('/api/search', async (req, res) => {
   const sku = (req.query.sku || '').trim();
   if (!sku) return res.status(400).json({ error: 'sku is required' });
 
   try {
-    // Try multiple search strategies
-    let item = null;
+    // GetStockItemsFull with correct JSON-encoded string enums (from official SDK)
+    const dataReq  = encodeURIComponent(JSON.stringify(['StockLevels']));
+    const searchT  = encodeURIComponent(JSON.stringify(['SKU']));
+    const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=10&pageNumber=1&dataRequirements=${dataReq}&searchTypes=${searchT}`;
+    const data = await lwPost('Stock/GetStockItemsFull', body);
 
-    // Strategy 1: GetStockItems (lightweight search)
-    try {
-      const s = await getSession();
-      const url = `${s.server}/api/Stock/GetStockItems`;
-      const body = new URLSearchParams({ keyword: sku, entriesPerPage: '10', startIndex: '0' });
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
-        body: body.toString()
-      });
-      if (r.ok) {
-        const d = await r.json();
-        const list = Array.isArray(d) ? d : (d.Items || d.Results || []);
-        item = list.find(i => (i.ItemNumber || '').toLowerCase() === sku.toLowerCase()) || list[0];
-      }
-    } catch (_) {}
-
-    // Strategy 2: GetStockItemsFull with minimal params
-    if (!item) {
-      try {
-        const s = await getSession();
-        const url = `${s.server}/api/Stock/GetStockItemsFull`;
-        const body = new URLSearchParams({
-          keyword: sku,
-          loadCompositeParents: 'false',
-          loadVariationParents: 'false',
-          entriesPerPage: '5',
-          startIndex: '0'
-        });
-        const r = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
-          body: body.toString()
-        });
-        if (r.ok) {
-          const d = await r.json();
-          const list = Array.isArray(d) ? d : (d.Items || d.Results || []);
-          item = list.find(i => (i.ItemNumber || '').toLowerCase() === sku.toLowerCase()) || list[0];
-        }
-      } catch (_) {}
-    }
-
-    if (!item) {
+    const list = Array.isArray(data) ? data : [];
+    if (!list.length) {
       return res.status(404).json({ error: `No item found for SKU: ${sku}` });
     }
+
+    const item = list.find(i => (i.ItemNumber || '').toLowerCase() === sku.toLowerCase()) || list[0];
 
     res.json({
       stockItemId: item.StockItemId,
       sku:         item.ItemNumber,
       title:       item.ItemTitle,
-      stockLevels: (item.StockLevels || item.Levels || []).map(sl => ({
-        locationId:   sl.Location ? sl.Location.StockLocationId : (sl.StockLocationId || ''),
-        locationName: sl.Location ? sl.Location.LocationName : (sl.LocationName || ''),
-        available:    sl.Available || sl.StockLevel || 0,
+      category:    item.CategoryName || '',
+      stockLevels: (item.StockLevels || []).map(sl => ({
+        locationId:   sl.Location ? sl.Location.StockLocationId : '',
+        locationName: sl.Location ? sl.Location.LocationName : '',
+        available:    sl.Available || 0,
         inOrders:     sl.InOrders || 0,
-        binRack:      sl.BinRack || ''
+        binRack:      sl.Location ? (sl.Location.BinRack || '') : ''
       }))
     });
   } catch (e) {
@@ -257,32 +154,36 @@ app.get('/api/search', async (req, res) => {
 app.post('/api/transfer', async (req, res) => {
   const { stockItemId, locationId, fromBinRack, toBinRack, qty } = req.body;
 
-  if (!stockItemId || !locationId || !fromBinRack || !toBinRack || !qty) {
+  if (!stockItemId || !fromBinRack || !toBinRack || !qty) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   try {
-    // Move stock between bin racks within a location
-    const result = await lwApi('Warehouse/MoveItem', {
-      request: {
-        StockItemId:    stockItemId,
-        StockLocationId: locationId,
-        FromBinRack:    fromBinRack,
-        ToBinRack:      toBinRack,
-        Quantity:       qty
-      }
-    });
-
+    // Use CreateWarehouseMove to move stock between bin racks
+    const request = {
+      StockItemId:          stockItemId,
+      StockLocationId:      locationId || null,
+      BinrackSource:        fromBinRack,
+      BinrackDestination:   toBinRack,
+      Quantity:             qty
+    };
+    const body = `request=${encodeURIComponent(JSON.stringify(request))}`;
+    const result = await lwPost('Stock/CreateWarehouseMove', body);
     res.json({ success: true, result });
   } catch (e) {
-    // Fallback: update bin rack assignment directly
+    // Fallback: SetStockLevel approach (adjusts bin rack assignment)
     try {
-      const result2 = await lwApi('Stock/SetStockItemBinRack', {
-        stockItemId:     stockItemId,
-        stockLocationId: locationId,
-        binRack:         toBinRack
-      });
-      res.json({ success: true, result: result2, method: 'binRackUpdate' });
+      const stockLevels = [{
+        SKU:             null,
+        StockItemId:     stockItemId,
+        LocationId:      locationId || null,
+        BinRack:         toBinRack,
+        Quantity:        qty,
+        ChangeSource:    'BinRackTransfer'
+      }];
+      const body = `stockLevels=${encodeURIComponent(JSON.stringify(stockLevels))}&changeSource=BinRackTransfer`;
+      const result2 = await lwPost('Stock/SetStockLevel', body);
+      res.json({ success: true, result: result2, method: 'setStockLevel' });
     } catch (e2) {
       res.status(500).json({ error: e.message, fallbackError: e2.message });
     }
