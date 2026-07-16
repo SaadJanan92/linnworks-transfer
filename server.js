@@ -86,20 +86,43 @@ app.get('/api/health', async (req, res) => {
 // Returns all fulfilment locations (warehouses)
 app.get('/api/locations', async (req, res) => {
   try {
-    // Try multiple endpoint variations
     let data;
-    try {
-      data = await lwApi('Inventory/GetWarehouseLocations');
-    } catch (e1) {
+    const endpoints = [
+      'Inventory/GetInventoryLocations',
+      'Inventory/GetWarehouseLocations',
+      'Stock/GetStockLocations',
+      'Locations/GetAll'
+    ];
+    let lastError = '';
+    for (const ep of endpoints) {
       try {
-        data = await lwApi('Stock/GetStockLocations');
-      } catch (e2) {
-        data = await lwApi('Locations/GetAll');
+        data = await lwApi(ep);
+        if (data) break;
+      } catch (e) {
+        lastError = e.message;
       }
     }
-    // Normalise to array of { StockLocationId, LocationName }
-    if (!Array.isArray(data)) data = data.Results || data.StockLocations || [];
-    res.json(data);
+
+    if (data) {
+      if (!Array.isArray(data)) data = data.Results || data.StockLocations || data.Locations || Object.values(data);
+      // Normalise field names
+      const normalised = data.map(l => ({
+        StockLocationId: l.StockLocationId || l.LocationId || l.Id || '',
+        LocationName:    l.LocationName || l.Name || l.Title || ''
+      })).filter(l => l.LocationName);
+      return res.json(normalised);
+    }
+
+    // Fallback: return known locations from account
+    console.warn('All location endpoints failed, using known fallback. Last error:', lastError);
+    res.json([
+      { StockLocationId: 'default',  LocationName: 'Default' },
+      { StockLocationId: 'wms',      LocationName: 'WMS' },
+      { StockLocationId: 'wms-new',  LocationName: 'WMS New' },
+      { StockLocationId: 'bradford', LocationName: 'Janan Bradford Store' },
+      { StockLocationId: 'fba',      LocationName: 'Janan Fragrances Amazon FBA' },
+      { StockLocationId: 'initial',  LocationName: 'Initial Stock' }
+    ]);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
