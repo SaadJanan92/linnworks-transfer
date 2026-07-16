@@ -17,22 +17,39 @@ const APP_ID = process.env.LINNWORKS_APP_ID;
 const APP_SECRET = process.env.LINNWORKS_APP_SECRET;
 const APP_TOKEN = process.env.LINNWORKS_TOKEN;
 
-// ─── Staff session store ──────────────────────────────────────────────────────
-const activeSessions = new Map();
-
 // ─── Transfer log ─────────────────────────────────────────────────────────────
-const LOG_FILE = path.join('/tmp', 'transfer-log.json');
+const LOG_FILE = '/tmp/transfer-log.json';
+const SESSION_FILE = '/tmp/sessions.json';
 
 function readLog() {
   try { return JSON.parse(fs.readFileSync(LOG_FILE, 'utf8')); } catch (_) { return []; }
 }
-
 function appendLog(entry) {
   const log = readLog();
-  log.unshift(entry); // newest first
+  log.unshift(entry);
   if (log.length > 2000) log.length = 2000;
   try { fs.writeFileSync(LOG_FILE, JSON.stringify(log)); } catch (_) {}
 }
+
+// ─── Staff session store — persisted to file so restarts don't log everyone out
+const activeSessions = new Map();
+
+function saveSessions() {
+  const obj = {};
+  for (const [k, v] of activeSessions) obj[k] = v;
+  try { fs.writeFileSync(SESSION_FILE, JSON.stringify(obj)); } catch (_) {}
+}
+function loadSessions() {
+  try {
+    const obj = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
+    const now = Date.now();
+    for (const [k, v] of Object.entries(obj)) {
+      if (v.expiry > now) activeSessions.set(k, v); // only load non-expired
+    }
+    console.log(`Loaded ${activeSessions.size} active sessions from disk`);
+  } catch (_) {}
+}
+loadSessions(); // restore sessions on startup
 
 // ─── POST /api/login ──────────────────────────────────────────────────────────
 // Validates against STAFF_USERS env var set in Render
@@ -59,22 +76,9 @@ app.post('/api/login', (req, res) => {
     displayName: user.displayName || username,
     expiry: Date.now() + 8 * 60 * 60 * 1000 // 8 hours
   });
+  saveSessions();
 
   res.json({ token, displayName: user.displayName || username });
-});
-
-// ─── GET /api/logs ────────────────────────────────────────────────────────────
-app.get('/api/logs', requireAuth, (req, res) => {
-  const limit = parseInt(req.query.limit) || 200;
-  const log = readLog().slice(0, limit);
-  res.json(log);
-});
-
-// ─── POST /api/logout ─────────────────────────────────────────────────────────
-app.post('/api/logout', (req, res) => {
-  const token = req.headers['x-auth-token'];
-  if (token) activeSessions.delete(token);
-  res.json({ ok: true });
 });
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
@@ -87,6 +91,21 @@ function requireAuth(req, res, next) {
   req.user = session;
   next();
 }
+
+// ─── POST /api/logout ────────────────────────────────────────────────────────
+app.post('/api/logout', (req, res) => {
+  const token = req.headers['x-auth-token'];
+  if (token) activeSessions.delete(token);
+  saveSessions();
+  res.json({ ok: true });
+});
+
+// ─── GET /api/logs ────────────────────────────────────────────────────────────
+app.get('/api/logs', requireAuth, (req, res) => {
+  const limit = parseInt(req.query.limit) || 200;
+  const log = readLog().slice(0, limit);
+  res.json(log);
+});
 
 // ─── Linnworks session cache ──────────────────────────────────────────────────
 let session = { token: null, server: null, expiry: 0 };
