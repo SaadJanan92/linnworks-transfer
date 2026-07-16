@@ -21,29 +21,56 @@ const APP_TOKEN = process.env.LINNWORKS_TOKEN;
 const activeSessions = new Map();
 
 // ─── POST /api/login ──────────────────────────────────────────────────────────
-// Validates against STAFF_USERS env var (JSON: {"ali":{"password":"1234","displayName":"Ali Khan"}})
-app.post('/api/login', (req, res) => {
+// Authenticates directly against Linnworks using the user's email & password
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
   }
 
-  let users = {};
-  try { users = JSON.parse(process.env.STAFF_USERS || '{}'); } catch (_) {}
+  try {
+    // Authenticate user against Linnworks Multilogin endpoint
+    const params = new URLSearchParams({
+      Email: username,
+      Password: password,
+      ApplicationId: APP_ID,
+      ApplicationSecret: APP_SECRET
+    });
 
-  const user = users[username.toLowerCase()];
-  if (!user || user.password !== password) {
-    return res.status(401).json({ error: 'Invalid username or password' });
+    const lwRes = await fetch('https://api.linnworks.net/api/Auth/Multilogin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+
+    if (!lwRes.ok) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    const lwData = await lwRes.json();
+
+    // Multilogin may return an array (multiple accounts) or a single object
+    const account = Array.isArray(lwData) ? lwData[0] : lwData;
+    if (!account || account.Token === undefined) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Build display name from Linnworks response
+    const displayName = [account.UserName, account.FullName, account.Email]
+      .find(v => v && v.trim()) || username;
+
+    const token = crypto.randomBytes(32).toString('hex');
+    activeSessions.set(token, {
+      username: username.toLowerCase(),
+      displayName,
+      expiry: Date.now() + 8 * 60 * 60 * 1000 // 8 hours
+    });
+
+    res.json({ token, displayName });
+  } catch (e) {
+    console.error('Login error:', e.message);
+    res.status(500).json({ error: 'Login failed — check server connection' });
   }
-
-  const token = crypto.randomBytes(32).toString('hex');
-  activeSessions.set(token, {
-    username: username.toLowerCase(),
-    displayName: user.displayName || username,
-    expiry: Date.now() + 8 * 60 * 60 * 1000 // 8 hours
-  });
-
-  res.json({ token, displayName: user.displayName || username });
 });
 
 // ─── POST /api/logout ─────────────────────────────────────────────────────────
