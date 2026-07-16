@@ -3,6 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="screen-orientation" content="portrait">
+<style>
+  @media screen and (orientation: landscape) {
+    body::before {
+      content: 'Please rotate your device to portrait mode';
+      position: fixed; inset: 0; z-index: 9999;
+      background: #1a1a2e; color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 600; text-align: center; padding: 40px;
+    }
+    body > * { display: none !important; }
+  }
+</style>
 <title>Linnworks Transfer</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="mobile-web-app-capable" content="yes">
@@ -994,6 +1007,7 @@ async function confirmTransfer() {
   const failed = items.filter(i => i.status === 'error').length;
 
   if (failed === 0) {
+    playTransferComplete();
     toast(`✓ All ${done} transfers complete!`, 'ok');
     setTimeout(() => {
       items.length = 0;
@@ -1043,6 +1057,12 @@ function playSuccess() {
 function playError() {
   beep(400, 0.15, 'square', 0.3);
   setTimeout(() => beep(250, 0.2, 'square', 0.3), 170);
+}
+function playTransferComplete() {
+  // Three ascending tones — distinct "all done" sound
+  beep(800, 0.12);
+  setTimeout(() => beep(1000, 0.12), 140);
+  setTimeout(() => beep(1400, 0.25), 280);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
