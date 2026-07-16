@@ -118,18 +118,27 @@ app.get('/api/search', async (req, res) => {
   if (!sku) return res.status(400).json({ error: 'sku is required' });
 
   try {
-    // GetStockItemsFull with correct JSON-encoded string enums (from official SDK)
-    const dataReq  = encodeURIComponent(JSON.stringify(['StockLevels']));
-    const searchT  = encodeURIComponent(JSON.stringify(['SKU']));
-    const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=10&pageNumber=1&dataRequirements=${dataReq}&searchTypes=${searchT}`;
-    const data = await lwPost('Stock/GetStockItemsFull', body);
+    const dataReq = encodeURIComponent(JSON.stringify(['StockLevels']));
+    let list = [];
 
-    const list = Array.isArray(data) ? data : [];
-    if (!list.length) {
-      return res.status(404).json({ error: `No item found for SKU: ${sku}` });
+    // Try SKU search first, then Barcode
+    for (const searchType of ['SKU', 'Barcode']) {
+      const searchT = encodeURIComponent(JSON.stringify([searchType]));
+      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=10&pageNumber=1&dataRequirements=${dataReq}&searchTypes=${searchT}`;
+      try {
+        const data = await lwPost('Stock/GetStockItemsFull', body);
+        if (Array.isArray(data) && data.length) { list = data; break; }
+      } catch (_) {}
     }
 
-    const item = list.find(i => (i.ItemNumber || '').toLowerCase() === sku.toLowerCase()) || list[0];
+    if (!list.length) {
+      return res.status(404).json({ error: `No item found for SKU/barcode: ${sku}` });
+    }
+
+    const item = list.find(i =>
+      (i.ItemNumber || '').toLowerCase() === sku.toLowerCase() ||
+      (i.BarcodeNumber || '').toLowerCase() === sku.toLowerCase()
+    ) || list[0];
 
     res.json({
       stockItemId: item.StockItemId,
