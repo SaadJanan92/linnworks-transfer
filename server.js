@@ -172,15 +172,53 @@ app.get('/api/transfer-debug', async (req, res) => {
     } catch(e) { results.step2_destBinRack = { error: e.message }; }
 
     // Step 3: Get SKUs in source bin rack (need srcId from step 1)
+    let batchInventoryId = null;
     const srcBinRacks = results.step1_sourceBinRack && results.step1_sourceBinRack.BinRacks;
+    const dstBinRacks = results.step2_destBinRack && results.step2_destBinRack.BinRacks;
     if (srcBinRacks && srcBinRacks.length) {
       const srcId = srcBinRacks[0].BinRackId;
       try {
         const r = await lwPost('Stock/GetBinrackSkus',
           `request=${encodeURIComponent(JSON.stringify({ BinRackId: srcId, DetailLevel: [] }))}`
         );
-        results.step3_binRackSkus = r;
+        results.step3_binRackSkus = { Skus_count: (r.Skus||[]).length };
+        // Find our item
+        for (const batch of (r.Skus||[])) {
+          if (String(batch.StockItemId).toLowerCase() === String(stockItemId).toLowerCase()) {
+            for (const inv of (batch.Inventory||[])) {
+              if (!inv.IsDeleted && inv.BinRackId === srcId) {
+                batchInventoryId = inv.BatchInventoryId;
+                results.step3_found = { BatchInventoryId: inv.BatchInventoryId, BinRack: inv.BinRack, Qty: inv.Quantity };
+                break;
+              }
+            }
+          }
+          if (batchInventoryId) break;
+        }
+        if (!batchInventoryId) results.step3_found = 'NOT FOUND';
       } catch(e) { results.step3_binRackSkus = { error: e.message }; }
+    }
+
+    // Step 4: Try CreateWarehouseMove (Open type — won't physically move yet)
+    if (batchInventoryId && dstBinRacks && dstBinRacks.length) {
+      const dstId = dstBinRacks[0].BinRackId;
+      try {
+        const r = await lwPost('Stock/CreateWarehouseMove',
+          `request=${encodeURIComponent(JSON.stringify({ BatchInventoryId: batchInventoryId, BinrackIdDestination: dstId, Quantity: 1, TxType: 'Open' }))}`
+        );
+        results.step4_createMove = r;
+        // Step 5: Try to complete it
+        const moveId = r.WarehouseMove && (r.WarehouseMove.WarehouseMoveId || r.WarehouseMove.Id || r.WarehouseMove.id);
+        results.step4_moveId = moveId;
+        if (moveId) {
+          try {
+            const c = await lwPost('Stock/CompleteWarehouseMove',
+              `request=${encodeURIComponent(JSON.stringify({ WarehouseMoveId: moveId }))}`
+            );
+            results.step5_complete = c || 'ok';
+          } catch(e) { results.step5_complete = { error: e.message }; }
+        }
+      } catch(e) { results.step4_createMove = { error: e.message }; }
     }
 
     res.json(results);
