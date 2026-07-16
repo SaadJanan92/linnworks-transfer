@@ -304,7 +304,7 @@
       <div style="font-size:13px;color:#888;margin-bottom:16px;">Scan or type where to move the items</div>
       <input type="text" id="toBin" placeholder="Scan destination bin rack…" autocomplete="off"
         style="width:100%;padding:14px;border:2px solid #e0e4ef;border-radius:8px;font-size:16px;font-family:inherit;margin-bottom:14px;outline:none;" />
-      <button class="btn-green" style="width:100%;padding:14px;font-size:16px;" onclick="confirmTransfer()">✓ Confirm Transfer</button>
+      <button id="confirmTransferBtn" class="btn-green" style="width:100%;padding:14px;font-size:16px;" onclick="confirmTransfer()">✓ Confirm Transfer</button>
       <button class="btn-red" style="width:100%;padding:12px;font-size:14px;margin-top:8px;" onclick="closeModal()">Cancel</button>
     </div>
   </div>
@@ -374,23 +374,25 @@
     if (e.key === 'Enter') handleScan();
   });
 
-  // Double-tap FROM bin rack to clear it
-  let fromBinTapTimer = null;
-  document.getElementById('fromBin').addEventListener('click', () => {
-    if (fromBinTapTimer) {
-      clearTimeout(fromBinTapTimer);
-      fromBinTapTimer = null;
-      // Double tap — clear the field
+  // Double-tap FROM bin rack to clear it (using touchend for Zebra touchscreen)
+  let lastFromBinTap = 0;
+  function clearFromBin(e) {
+    const now = Date.now();
+    if (now - lastFromBinTap < 400) {
+      e.preventDefault();
       const el = document.getElementById('fromBin');
       el.value = '';
       el.classList.remove('filled', 'scan-focus');
       binRackContents = null;
       toast('Bin rack cleared — scan new source', '');
       el.focus();
+      lastFromBinTap = 0;
     } else {
-      fromBinTapTimer = setTimeout(() => { fromBinTapTimer = null; }, 400);
+      lastFromBinTap = now;
     }
-  });
+  }
+  document.getElementById('fromBin').addEventListener('touchend', clearFromBin);
+  document.getElementById('fromBin').addEventListener('click', clearFromBin);
 
   // Scan-focus highlight
   ['fromBin','skuInput'].forEach(id => {
@@ -576,12 +578,21 @@
     const modal = document.getElementById('toModal');
     modal.style.display = 'flex';
     const toInput = document.getElementById('toBin');
+    const confirmBtn = document.getElementById('confirmTransferBtn');
     toInput.value = '';
-    setTimeout(() => toInput.focus(), 100);
 
-    // Do NOT auto-confirm on Enter — Zebra scanner sends Enter after scan
-    // User must tap the Confirm Transfer button
-    toInput.onkeydown = null;
+    // Block confirm button for 1.5s — scanner sends Enter immediately after scan
+    // which could accidentally trigger the button before user reviews
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Scan destination bin rack…';
+    setTimeout(() => {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = '✓ Confirm Transfer';
+    }, 1500);
+
+    // Block Enter key on the input too
+    toInput.onkeydown = e => { if (e.key === 'Enter') e.preventDefault(); };
+    toInput.focus();
   }
 
   function closeModal() {
