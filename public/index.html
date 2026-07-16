@@ -1095,20 +1095,34 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-// Counter-rotate page when device is flipped 180° upside down
+// Counter-rotate page when device is flipped upside down
 function checkOrientation() {
-  const angle = (screen.orientation && screen.orientation.angle != null)
-    ? screen.orientation.angle
-    : (window.orientation || 0);
-  if (angle === 180 || angle === -180) {
+  let upsideDown = false;
+  try {
+    // Most reliable: use orientation type
+    if (screen.orientation && screen.orientation.type) {
+      upsideDown = screen.orientation.type === 'portrait-secondary' ||
+                   screen.orientation.type === 'landscape-secondary';
+    }
+    // Fallback: use angle
+    if (!upsideDown) {
+      const angle = (screen.orientation && screen.orientation.angle != null)
+        ? screen.orientation.angle : (window.orientation || 0);
+      upsideDown = angle === 180 || angle === -180;
+    }
+  } catch(e) {}
+
+  if (upsideDown) {
     document.body.classList.add('rotated-180');
   } else {
     document.body.classList.remove('rotated-180');
   }
 }
 checkOrientation();
-window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 100));
-if (screen.orientation) screen.orientation.addEventListener('change', checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 50));
+if (screen.orientation) screen.orientation.addEventListener('change', () => setTimeout(checkOrientation, 50));
+// Continuous check every 500ms as fallback for Zebra devices
+setInterval(checkOrientation, 500);
 
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
