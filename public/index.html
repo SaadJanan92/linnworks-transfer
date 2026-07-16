@@ -473,37 +473,67 @@ async function showHistory() {
   body.innerHTML = '<div style="text-align:center;padding:30px;color:#aaa;"><span class="spinner"></span> Loading…</div>';
 
   try {
-    const logs = await api('/api/logs?limit=200');
+    const logs = await api('/api/logs?limit=500');
     if (!logs.length) {
       body.innerHTML = '<div style="text-align:center;padding:40px;color:#bbb;font-size:14px;">No transfers recorded yet</div>';
       return;
     }
 
-    // Group by date
+    // Group entries by transferId (or individually if no transferId)
+    const groups = [];
+    const seen = {};
+    for (const entry of logs) {
+      const key = entry.transferId || (entry.timestamp + entry.fromBinRack + entry.toBinRack + entry.user);
+      if (seen[key]) {
+        seen[key].items.push({ sku: entry.sku, title: entry.title, qty: entry.qty });
+      } else {
+        const group = {
+          key,
+          timestamp: entry.timestamp,
+          user: entry.user,
+          fromBinRack: entry.fromBinRack,
+          toBinRack: entry.toBinRack,
+          items: [{ sku: entry.sku, title: entry.title, qty: entry.qty }]
+        };
+        seen[key] = group;
+        groups.push(group);
+      }
+    }
+
     let lastDate = '';
-    body.innerHTML = logs.map(entry => {
-      const dt = new Date(entry.timestamp);
+    body.innerHTML = groups.map(g => {
+      const dt = new Date(g.timestamp);
       const dateStr = dt.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
       const timeStr = dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
       const dateHeader = dateStr !== lastDate
-        ? `<div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:0.5px;padding:12px 0 6px;">${dateStr}</div>`
+        ? `<div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:0.5px;padding:14px 0 6px;border-top:${lastDate ? '2px solid #f0f2f5' : 'none'}">${dateStr}</div>`
         : '';
       lastDate = dateStr;
 
+      const totalUnits = g.items.reduce((s, i) => s + i.qty, 0);
+
+      const itemRows = g.items.map(i => `
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 10px;border-left:2px solid #e0e4ef;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:monospace;font-size:12px;font-weight:700;color:#1a1a2e;">${esc(i.sku)}</div>
+            <div style="font-size:11px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(i.title)}</div>
+          </div>
+          <span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;flex-shrink:0;">×${i.qty}</span>
+        </div>`).join('');
+
       return `${dateHeader}
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f5f5f8;">
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-            <span style="background:#1a1a2e;color:white;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700;">${esc(entry.user)}</span>
-            <span style="color:#888;font-size:12px;">${timeStr}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:13px;">
-            <span style="font-family:monospace;background:#f0f2f5;padding:2px 7px;border-radius:4px;font-weight:700;">${esc(entry.fromBinRack)}</span>
-            <span style="color:#00c896;font-weight:700;">→</span>
-            <span style="font-family:monospace;background:#f0f2f5;padding:2px 7px;border-radius:4px;font-weight:700;">${esc(entry.toBinRack)}</span>
-            <span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:700;">×${entry.qty}</span>
-          </div>
+      <div style="padding:10px 0;border-bottom:1px solid #f5f5f8;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+          <span style="background:#1a1a2e;color:white;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:700;">${esc(g.user)}</span>
+          <span style="color:#888;font-size:12px;">${timeStr}</span>
+          <span style="color:#aaa;font-size:11px;margin-left:auto;">${totalUnits} unit${totalUnits !== 1 ? 's' : ''}</span>
         </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px;">
+          <span style="font-family:monospace;background:#f0f2f5;padding:3px 8px;border-radius:4px;font-weight:700;">${esc(g.fromBinRack)}</span>
+          <span style="color:#00c896;font-weight:700;font-size:16px;">→</span>
+          <span style="font-family:monospace;background:#f0f2f5;padding:3px 8px;border-radius:4px;font-weight:700;">${esc(g.toBinRack)}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">${itemRows}</div>
       </div>`;
     }).join('');
   } catch (e) {
@@ -893,6 +923,7 @@ async function confirmTransfer() {
 
   const from = document.getElementById('fromBin').value.trim();
   const pending = items.filter(i => i.status === 'pending');
+  const transferId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   document.getElementById('sumTo').textContent = to;
   document.getElementById('transferBtn').disabled = true;
@@ -907,7 +938,10 @@ async function confirmTransfer() {
         locationName: item.locationName,
         fromBinRack: from,
         toBinRack: to,
-        qty: item.qty
+        qty: item.qty,
+        sku: item.sku,
+        title: item.title,
+        transferId
       });
       item.status = 'success';
     } catch (e) {
