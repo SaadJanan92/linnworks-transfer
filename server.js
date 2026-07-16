@@ -80,37 +80,37 @@ app.get('/api/debug', async (req, res) => {
     const results = {};
     const hForm = { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token };
 
-    // Test A: GetStockItems with repeated-params format (no dataRequirements)
+    // Test A: GetStockItemsFull - no optional params at all
+    try {
+      const url = `${s.server}/api/Stock/GetStockItemsFull`;
+      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0`;
+      const r = await fetch(url, { method: 'POST', headers: hForm, body });
+      results.A_noOptional = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.A_noOptional = { error: e.message }; }
+
+    // Test B: GetStockItems - params wrapped as request JSON string
     try {
       const url = `${s.server}/api/Stock/GetStockItems`;
-      const body = `keyword=${encodeURIComponent(sku)}&entriesPerPage=5&startIndex=0`;
+      const body = `request=${encodeURIComponent(JSON.stringify({ keyword: sku, entriesPerPage: 5, startIndex: 0 }))}`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.A_GetStockItems = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.A_GetStockItems = { error: e.message }; }
+      results.B_request_wrapped = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.B_request_wrapped = { error: e.message }; }
 
-    // Test B: GetStockItemsFull without dataRequirements
+    // Test C: GetStockItemsFull - params wrapped as request JSON string
     try {
       const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&searchTypes=0`;
+      const body = `request=${encodeURIComponent(JSON.stringify({ keyword: sku, loadCompositeParents: false, loadVariationParents: false, entriesPerPage: 5, startIndex: 0, dataRequirements: [0], searchTypes: [0] }))}`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.B_GetStockItemsFull_noDataReq = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.B_GetStockItemsFull_noDataReq = { error: e.message }; }
+      results.C_full_wrapped = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.C_full_wrapped = { error: e.message }; }
 
-    // Test C: GetStockItemsFull with StockItemDataRequirement enum values as strings
+    // Test D: GetStockItems - only keyword
     try {
-      const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=StockLevel&dataRequirements=Prices&searchTypes=SKU`;
+      const url = `${s.server}/api/Stock/GetStockItems`;
+      const body = `keyword=${encodeURIComponent(sku)}&count=5&pageNumber=1`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.C_GetStockItemsFull_enumStrings = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.C_GetStockItemsFull_enumStrings = { error: e.message }; }
-
-    // Test D: GetInventoryItems
-    try {
-      const url = `${s.server}/api/Inventory/GetInventoryItems`;
-      const body = `keyword=${encodeURIComponent(sku)}&entriesPerPage=5&startIndex=0`;
-      const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.D_GetInventoryItems = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.D_GetInventoryItems = { error: e.message }; }
+      results.D_altParams = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.D_altParams = { error: e.message }; }
 
     res.json({ server: s.server, results });
   } catch (e) {
