@@ -349,7 +349,13 @@ tr:hover td { background: #fafbff; }
     </div>
     <div class="login-field">
       <label>Password</label>
-      <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password" />
+      <div style="position:relative;">
+        <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password" style="width:100%;padding-right:46px;" />
+        <button type="button" id="togglePwd" onclick="togglePassword()"
+          style="position:absolute;right:0;top:0;bottom:0;width:44px;background:none;border:none;cursor:pointer;color:#888;font-size:18px;display:flex;align-items:center;justify-content:center;padding:0;">
+          👁
+        </button>
+      </div>
     </div>
 
     <button class="btn-login" id="loginBtn" onclick="doLogin()">Sign In</button>
@@ -455,6 +461,18 @@ let currentUser = sessionStorage.getItem('lw_user') || null;
 document.getElementById('loginPassword').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
+
+function togglePassword() {
+  const input = document.getElementById('loginPassword');
+  const btn = document.getElementById('togglePwd');
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁';
+  }
+}
 document.getElementById('loginUsername').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('loginPassword').focus();
 });
