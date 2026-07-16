@@ -150,43 +150,30 @@ app.get('/api/search', async (req, res) => {
 });
 
 // ─── POST /api/transfer ───────────────────────────────────────────────────────
-// Body: { stockItemId, locationId, fromBinRack, toBinRack, qty }
+// Body: { stockItemId, locationId, locationName, fromBinRack, toBinRack, qty }
 app.post('/api/transfer', async (req, res) => {
-  const { stockItemId, locationId, fromBinRack, toBinRack, qty } = req.body;
+  const { stockItemId, locationId, locationName, fromBinRack, toBinRack, qty } = req.body;
 
-  if (!stockItemId || !fromBinRack || !toBinRack || !qty) {
+  if (!stockItemId || !toBinRack) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   try {
-    // Use CreateWarehouseMove to move stock between bin racks
+    // UpdateStockLevelsBulk — updates the Binrack field on the stock level
     const request = {
-      StockItemId:          stockItemId,
-      StockLocationId:      locationId || null,
-      BinrackSource:        fromBinRack,
-      BinrackDestination:   toBinRack,
-      Quantity:             qty
+      Items: [{
+        StockItemId:      stockItemId,
+        StockLocationId:  locationId   || undefined,
+        StockLocationName: locationName || undefined,
+        Binrack:          toBinRack,
+        RowIndex:         0
+      }]
     };
     const body = `request=${encodeURIComponent(JSON.stringify(request))}`;
-    const result = await lwPost('Stock/CreateWarehouseMove', body);
+    const result = await lwPost('Stock/UpdateStockLevelsBulk', body);
     res.json({ success: true, result });
   } catch (e) {
-    // Fallback: SetStockLevel approach (adjusts bin rack assignment)
-    try {
-      const stockLevels = [{
-        SKU:             null,
-        StockItemId:     stockItemId,
-        LocationId:      locationId || null,
-        BinRack:         toBinRack,
-        Quantity:        qty,
-        ChangeSource:    'BinRackTransfer'
-      }];
-      const body = `stockLevels=${encodeURIComponent(JSON.stringify(stockLevels))}&changeSource=BinRackTransfer`;
-      const result2 = await lwPost('Stock/SetStockLevel', body);
-      res.json({ success: true, result: result2, method: 'setStockLevel' });
-    } catch (e2) {
-      res.status(500).json({ error: e.message, fallbackError: e2.message });
-    }
+    res.status(500).json({ error: e.message });
   }
 });
 
