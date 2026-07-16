@@ -135,34 +135,64 @@ app.get('/api/search', async (req, res) => {
   if (!sku) return res.status(400).json({ error: 'sku is required' });
 
   try {
-    const data = await lwApi('Stock/GetStockItemsFull', {
-      keyword:               sku,
-      loadCompositeParents:  false,
-      loadVariationParents:  false,
-      entriesPerPage:        5,
-      startIndex:            0,
-      dataRequirements:      JSON.stringify([0, 1, 2, 8]),
-      searchTypes:           JSON.stringify([0])
-    });
+    // Try multiple search strategies
+    let item = null;
 
-    const items = Array.isArray(data) ? data : (data.Items || data.Results || []);
+    // Strategy 1: GetStockItems (lightweight search)
+    try {
+      const s = await getSession();
+      const url = `${s.server}/api/Stock/GetStockItems`;
+      const body = new URLSearchParams({ keyword: sku, entriesPerPage: '10', startIndex: '0' });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
+        body: body.toString()
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const list = Array.isArray(d) ? d : (d.Items || d.Results || []);
+        item = list.find(i => (i.ItemNumber || '').toLowerCase() === sku.toLowerCase()) || list[0];
+      }
+    } catch (_) {}
 
-    if (!items || items.length === 0) {
-      return res.status(404).json({ error: `No item found for SKU: ${sku}` });
+    // Strategy 2: GetStockItemsFull with minimal params
+    if (!item) {
+      try {
+        const s = await getSession();
+        const url = `${s.server}/api/Stock/GetStockItemsFull`;
+        const body = new URLSearchParams({
+          keyword: sku,
+          loadCompositeParents: 'false',
+          loadVariationParents: 'false',
+          entriesPerPage: '5',
+          startIndex: '0'
+        });
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
+          body: body.toString()
+        });
+        if (r.ok) {
+          const d = await r.json();
+          const list = Array.isArray(d) ? d : (d.Items || d.Results || []);
+          item = list.find(i => (i.ItemNumber || '').toLowerCase() === sku.toLowerCase()) || list[0];
+        }
+      } catch (_) {}
     }
 
-    // Find exact SKU match first, fall back to first result
-    const item = items.find(i => (i.ItemNumber || '').toLowerCase() === sku.toLowerCase()) || items[0];
+    if (!item) {
+      return res.status(404).json({ error: `No item found for SKU: ${sku}` });
+    }
 
     res.json({
       stockItemId: item.StockItemId,
       sku:         item.ItemNumber,
       title:       item.ItemTitle,
-      stockLevels: (item.StockLevels || []).map(sl => ({
-        locationId:   sl.Location ? sl.Location.StockLocationId : sl.StockLocationId,
-        locationName: sl.Location ? sl.Location.LocationName : sl.LocationName,
-        available:    sl.Available,
-        inOrders:     sl.InOrders,
+      stockLevels: (item.StockLevels || item.Levels || []).map(sl => ({
+        locationId:   sl.Location ? sl.Location.StockLocationId : (sl.StockLocationId || ''),
+        locationName: sl.Location ? sl.Location.LocationName : (sl.LocationName || ''),
+        available:    sl.Available || sl.StockLevel || 0,
+        inOrders:     sl.InOrders || 0,
         binRack:      sl.BinRack || ''
       }))
     });
