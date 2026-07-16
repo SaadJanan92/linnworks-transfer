@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Linnworks Transfer</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="mobile-web-app-capable" content="yes">
@@ -46,31 +46,31 @@
     #connStatus.ok  { background: #00c896; color: white; }
     #connStatus.err { background: #dc2626; color: white; }
 
-    .container { max-width: 860px; margin: 0 auto; padding: 20px 14px; }
+    .container { max-width: 860px; margin: 0 auto; padding: 10px 8px; }
 
     .card {
       background: white;
-      border-radius: 12px;
-      padding: 20px;
+      border-radius: 10px;
+      padding: 12px 14px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-      margin-bottom: 16px;
+      margin-bottom: 10px;
     }
     .card-title {
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 700;
       color: #888;
       text-transform: uppercase;
       letter-spacing: 0.6px;
-      margin-bottom: 14px;
+      margin-bottom: 10px;
     }
 
     /* Location selector */
     select {
       width: 100%;
-      padding: 11px 14px;
+      padding: 12px 14px;
       border: 2px solid #e0e4ef;
       border-radius: 8px;
-      font-size: 15px;
+      font-size: 16px;
       font-family: inherit;
       background: #fafbff;
       color: #1a1a2e;
@@ -79,40 +79,41 @@
     }
     select:focus { border-color: #1a1a2e; }
 
-    .bin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-    @media (max-width: 480px) { .bin-row { grid-template-columns: 1fr; } }
+    /* Always side-by-side for bin rack fields */
+    .bin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 
-    .field { display: flex; flex-direction: column; gap: 5px; }
-    .field label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
 
     input[type="text"], input[type="number"] {
-      padding: 12px 14px;
+      padding: 13px 12px;
       border: 2px solid #e0e4ef;
       border-radius: 8px;
-      font-size: 15px;
+      font-size: 16px;
       font-family: inherit;
       outline: none;
       background: #fafbff;
       color: #1a1a2e;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      transition: border-color 0.2s;
+      -webkit-appearance: none;
     }
-    input:focus { border-color: #1a1a2e; box-shadow: 0 0 0 3px rgba(26,26,46,0.07); background: white; }
+    input:focus { border-color: #1a1a2e; background: white; }
     input.filled { border-color: #00c896; background: #f0fdf8; }
     input.scan-focus { border-color: #f59e0b; background: #fffef0; box-shadow: 0 0 0 3px rgba(245,158,11,0.12); }
 
-    .scan-row { display: grid; grid-template-columns: 1fr 110px auto; gap: 12px; align-items: end; }
-    @media (max-width: 480px) { .scan-row { grid-template-columns: 1fr 90px auto; } }
+    .scan-row { display: grid; grid-template-columns: 1fr 72px 60px; gap: 6px; align-items: end; }
 
     button {
-      padding: 12px 18px;
+      padding: 13px 14px;
       border: none;
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 600;
       cursor: pointer;
       font-family: inherit;
       transition: all 0.2s;
       white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
     }
     .btn-dark  { background: #1a1a2e; color: white; }
     .btn-dark:hover  { background: #2d2d50; }
@@ -126,10 +127,10 @@
     /* Item card after scan */
     #itemPreview {
       display: none;
-      padding: 14px;
+      padding: 10px 12px;
       border: 2px solid #e0e4ef;
       border-radius: 8px;
-      margin-top: 12px;
+      margin-top: 8px;
       background: #fafbff;
     }
     #itemPreview.found { border-color: #00c896; background: #f0fdf8; }
