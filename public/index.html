@@ -16,6 +16,22 @@
     body > * { display: none !important; }
   }
 </style>
+<script>
+  // Lock to portrait-primary (upright) as soon as possible — prevents 180° flip too
+  (function() {
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('portrait-primary').catch(() => {});
+      } else if (window.screen.lockOrientation) {
+        window.screen.lockOrientation('portrait-primary');
+      } else if (window.screen.mozLockOrientation) {
+        window.screen.mozLockOrientation('portrait-primary');
+      } else if (window.screen.msLockOrientation) {
+        window.screen.msLockOrientation('portrait-primary');
+      }
+    } catch(e) {}
+  })();
+</script>
 <title>Linnworks Transfer</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1090,6 +1106,17 @@ async function api(url, method = 'GET', body = null) {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// Re-lock orientation after first user interaction (required on some Android browsers)
+function lockPortrait() {
+  try {
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('portrait-primary').catch(() => {});
+    }
+  } catch(e) {}
+}
+document.addEventListener('touchstart', lockPortrait, { once: true });
+document.addEventListener('click', lockPortrait, { once: true });
 
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
