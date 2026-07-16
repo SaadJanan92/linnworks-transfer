@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: linnworks-transfer
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: LINNWORKS_APP_ID
+        sync: false
+      - key: LINNWORKS_APP_SECRET
+        sync: false
+      - key: LINNWORKS_TOKEN
+        sync: false

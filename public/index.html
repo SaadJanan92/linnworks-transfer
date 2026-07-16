@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linnworks — Bin Rack Transfer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a2e;
+      color: white;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 17px; font-weight: 600; }
+    #connStatus {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      background: #444;
+      color: #ccc;
+    }
+    #connStatus.ok  { background: #00c896; color: white; }
+    #connStatus.err { background: #dc2626; color: white; }
+
+    .container { max-width: 860px; margin: 0 auto; padding: 20px 14px; }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 14px;
+    }
+
+    /* Location selector */
+    select {
+      width: 100%;
+      padding: 11px 14px;
+      border: 2px solid #e0e4ef;
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: inherit;
+      background: #fafbff;
+      color: #1a1a2e;
+      outline: none;
+      cursor: pointer;
+    }
+    select:focus { border-color: #1a1a2e; }
+
+    .bin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 480px) { .bin-row { grid-template-columns: 1fr; } }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    input[type="text"], input[type="number"] {
+      padding: 12px 14px;
+      border: 2px solid #e0e4ef;
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      background: #fafbff;
+      color: #1a1a2e;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus { border-color: #1a1a2e; box-shadow: 0 0 0 3px rgba(26,26,46,0.07); background: white; }
+    input.filled { border-color: #00c896; background: #f0fdf8; }
+    input.scan-focus { border-color: #f59e0b; background: #fffef0; box-shadow: 0 0 0 3px rgba(245,158,11,0.12); }
+
+    .scan-row { display: grid; grid-template-columns: 1fr 110px auto; gap: 12px; align-items: end; }
+    @media (max-width: 480px) { .scan-row { grid-template-columns: 1fr 90px auto; } }
+
+    button {
+      padding: 12px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-dark  { background: #1a1a2e; color: white; }
+    .btn-dark:hover  { background: #2d2d50; }
+    .btn-dark:disabled { background: #b0b3c0; cursor: not-allowed; }
+    .btn-green { background: #00c896; color: white; }
+    .btn-green:hover { background: #00b085; }
+    .btn-green:disabled { background: #b0b3c0; cursor: not-allowed; }
+    .btn-red   { background: #fee2e2; color: #dc2626; padding: 8px 12px; font-size: 13px; }
+    .btn-red:hover { background: #fca5a5; }
+
+    /* Item card after scan */
+    #itemPreview {
+      display: none;
+      padding: 14px;
+      border: 2px solid #e0e4ef;
+      border-radius: 8px;
+      margin-top: 12px;
+      background: #fafbff;
+    }
+    #itemPreview.found { border-color: #00c896; background: #f0fdf8; }
+    #itemPreview.notfound { border-color: #dc2626; background: #fef2f2; }
+    .item-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+    .item-sku   { font-family: monospace; font-size: 13px; color: #555; margin-bottom: 8px; }
+    .stock-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .stock-chip {
+      background: #e8f4fd;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      color: #1565c0;
+      font-weight: 600;
+    }
+    .stock-chip .loc { color: #666; font-weight: 400; font-size: 11px; display: block; }
+    .stock-chip .bin { font-size: 11px; color: #888; }
+
+    /* Transfer list */
+    .list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 18px 0 12px;
+    }
+    .list-header h3 { font-size: 13px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .list-header span { font-size: 12px; color: #aaa; }
+
+    .empty-state { text-align: center; padding: 36px; color: #bbb; }
+    .empty-state .icon { font-size: 36px; margin-bottom: 8px; }
+    .empty-state p { font-size: 14px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left; font-size: 11px; font-weight: 700;
+      color: #aaa; text-transform: uppercase; letter-spacing: 0.4px;
+      padding: 6px 10px; border-bottom: 2px solid #f0f2f5;
+    }
+    td { padding: 11px 10px; border-bottom: 1px solid #f5f5f8; font-size: 14px; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafbff; }
+    .sku-mono { font-family: monospace; background: #f0f2f5; padding: 2px 7px; border-radius: 4px; font-size: 13px; font-weight: 600; }
+    .qty-pill { background: #dbeafe; color: #1d4ed8; padding: 2px 10px; border-radius: 20px; font-weight: 700; font-size: 13px; }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    }
+    .status-pill.pending  { background: #fef9c3; color: #92400e; }
+    .status-pill.success  { background: #dcfce7; color: #15803d; }
+    .status-pill.error    { background: #fee2e2; color: #dc2626; }
+    .status-pill.sending  { background: #ede9fe; color: #7c3aed; }
+
+    /* Summary + actions */
+    .summary-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      background: #f0fdf8; border: 1px solid #a7f3d0;
+      border-radius: 10px; padding: 14px 18px; margin-bottom: 14px; flex-wrap: wrap; gap: 12px;
+    }
+    .route { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+    .bin-pill { background: #1a1a2e; color: white; padding: 4px 12px; border-radius: 6px; font-family: monospace; font-size: 13px; }
+    .arrow { color: #00c896; font-size: 18px; }
+    .stats { display: flex; gap: 24px; }
+    .stat { display: flex; flex-direction: column; align-items: center; }
+    .stat-val { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+    .stat-lbl { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .action-row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 20px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1a1a2e; color: white;
+      padding: 11px 22px; border-radius: 8px;
+      font-size: 14px; font-weight: 500;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      transition: transform 0.3s; z-index: 999;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.ok   { background: #00c896; }
+    #toast.err  { background: #dc2626; }
+
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #7c3aed; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📦 Linnworks Transfer</h1>
+  <div id="connStatus">Connecting…</div>
+</header>
+
+<div class="container">
+
+  <!-- Location -->
+  <div class="card">
+    <div class="card-title">1 — Warehouse Location</div>
+    <select id="locationSelect">
+      <option value="">Loading locations…</option>
+    </select>
+  </div>
+
+  <!-- Bin Racks -->
+  <div class="card">
+    <div class="card-title">2 — Transfer Route</div>
+    <div class="bin-row">
+      <div class="field">
+        <label>📤 From Bin Rack</label>
+        <input type="text" id="fromBin" placeholder="Scan source bin rack…" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>📥 To Bin Rack</label>
+        <input type="text" id="toBin" placeholder="Scan destination bin rack…" autocomplete="off" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Scan SKU -->
+  <div class="card">
+    <div class="card-title">3 — Scan Items</div>
+    <div class="scan-row">
+      <div class="field">
+        <label>SKU / Barcode</label>
+        <input type="text" id="skuInput" placeholder="Scan barcode…" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Qty</label>
+        <input type="number" id="qtyInput" value="1" min="1" />
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="btn-dark" onclick="handleScan()">Add</button>
+      </div>
+    </div>
+    <div id="itemPreview"></div>
+  </div>
+
+  <!-- Transfer list -->
+  <div class="card" id="listCard" style="display:none">
+    <div class="card-title">4 — Transfer List</div>
+
+    <div class="summary-bar">
+      <div class="route">
+        <span class="bin-pill" id="sumFrom">—</span>
+        <span class="arrow">→</span>
+        <span class="bin-pill" id="sumTo">—</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="stat-val" id="statSKUs">0</span><span class="stat-lbl">SKUs</span></div>
+        <div class="stat"><span class="stat-val" id="statUnits">0</span><span class="stat-lbl">Units</span></div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>#</th><th>SKU</th><th>Title</th><th>Qty</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody id="listBody"></tbody>
+    </table>
+
+    <div class="action-row" style="margin-top:16px">
+      <button class="btn-red" onclick="clearAll()">🗑 Clear</button>
+      <button class="btn-green" id="transferBtn" onclick="runAllTransfers()">⚡ Transfer All</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  const items = []; // { stockItemId, sku, title, qty, locationId, status, error }
+
+  // ── On load ────────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', async () => {
+    await checkHealth();
+    await loadLocations();
+    document.getElementById('skuInput').focus();
+  });
+
+  async function checkHealth() {
+    const el = document.getElementById('connStatus');
+    try {
+      const r = await api('/api/health');
+      el.textContent = 'Connected';
+      el.className = 'ok';
+    } catch (e) {
+      el.textContent = 'Offline';
+      el.className = 'err';
+      toast('Cannot reach Linnworks — check server', 'err');
+    }
+  }
+
+  async function loadLocations() {
+    const sel = document.getElementById('locationSelect');
+    try {
+      const locs = await api('/api/locations');
+      sel.innerHTML = locs.map(l =>
+        `<option value="${l.StockLocationId}">${l.LocationName}</option>`
+      ).join('');
+    } catch (e) {
+      sel.innerHTML = '<option value="">Failed to load locations</option>';
+    }
+  }
+
+  // ── Keyboard/scan flow ─────────────────────────────────────────────────────
+  document.getElementById('fromBin').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.value.trim()) {
+      document.getElementById('toBin').focus();
+      e.target.classList.add('filled');
+    }
+  });
+  document.getElementById('toBin').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.value.trim()) {
+      document.getElementById('skuInput').focus();
+      e.target.classList.add('filled');
+    }
+  });
+  document.getElementById('skuInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleScan();
+  });
+  document.getElementById('qtyInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleScan();
+  });
+
+  // Scan-focus highlight
+  ['fromBin','toBin','skuInput'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('focus', () => el.classList.add('scan-focus'));
+    el.addEventListener('blur',  () => el.classList.remove('scan-focus'));
+  });
+
+  // ── Scan & lookup ──────────────────────────────────────────────────────────
+  async function handleScan() {
+    const sku = document.getElementById('skuInput').value.trim();
+    const qty = parseInt(document.getElementById('qtyInput').value) || 1;
+    if (!sku) { toast('Scan a barcode first', 'err'); return; }
+
+    const preview = document.getElementById('itemPreview');
+    preview.style.display = 'block';
+    preview.className = '';
+    preview.innerHTML = '<span class="spinner"></span> Looking up SKU…';
+
+    try {
+      const item = await api(`/api/search?sku=${encodeURIComponent(sku)}`);
+
+      preview.className = 'found';
+      preview.innerHTML = `
+        <div class="item-title">${esc(item.title)}</div>
+        <div class="item-sku">${esc(item.sku)}</div>
+        <div class="stock-chips">
+          ${(item.stockLevels || []).map(sl => `
+            <div class="stock-chip">
+              <span class="loc">${esc(sl.locationName)}</span>
+              Avail: <strong>${sl.available}</strong>
+              ${sl.binRack ? `<span class="bin">Bin: ${esc(sl.binRack)}</span>` : ''}
+            </div>
+          `).join('')}
+        </div>`;
+
+      // Add to list
+      const locationId = document.getElementById('locationSelect').value;
+      const existing = items.find(i => i.sku === sku);
+      if (existing) {
+        existing.qty += qty;
+        toast(`+${qty} added to ${sku} (total: ${existing.qty})`, 'ok');
+      } else {
+        items.push({
+          stockItemId: item.stockItemId,
+          sku:         item.sku,
+          title:       item.title,
+          qty,
+          locationId,
+          status:      'pending',
+          error:       null
+        });
+        toast(`Added: ${item.title}`, 'ok');
+      }
+
+      document.getElementById('skuInput').value = '';
+      document.getElementById('qtyInput').value = 1;
+      document.getElementById('skuInput').focus();
+      renderList();
+
+    } catch (e) {
+      preview.className = 'notfound';
+      preview.innerHTML = `<strong>Not found:</strong> ${esc(e.message)}`;
+      toast('SKU not found in Linnworks', 'err');
+    }
+  }
+
+  // ── Render list ────────────────────────────────────────────────────────────
+  function renderList() {
+    document.getElementById('listCard').style.display = items.length ? 'block' : 'none';
+    if (!items.length) return;
+
+    const from = document.getElementById('fromBin').value || '—';
+    const to   = document.getElementById('toBin').value   || '—';
+    document.getElementById('sumFrom').textContent  = from;
+    document.getElementById('sumTo').textContent    = to;
+    document.getElementById('statSKUs').textContent = items.length;
+    document.getElementById('statUnits').textContent = items.reduce((s,i) => s + i.qty, 0);
+
+    document.getElementById('listBody').innerHTML = items.map((item, idx) => `
+      <tr>
+        <td style="color:#aaa;font-size:12px">${idx+1}</td>
+        <td><span class="sku-mono">${esc(item.sku)}</span></td>
+        <td style="font-size:13px;color:#555;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.title)}</td>
+        <td><span class="qty-pill">${item.qty}</span></td>
+        <td>${statusPill(item)}</td>
+        <td>${item.status === 'pending' ? `<button class="btn-red" onclick="removeItem(${idx})">✕</button>` : ''}</td>
+      </tr>
+    `).join('');
+  }
+
+  function statusPill(item) {
+    if (item.status === 'pending')  return '<span class="status-pill pending">Pending</span>';
+    if (item.status === 'sending')  return '<span class="status-pill sending"><span class="spinner"></span> Sending…</span>';
+    if (item.status === 'success')  return '<span class="status-pill success">✓ Done</span>';
+    if (item.status === 'error')    return `<span class="status-pill error" title="${esc(item.error||'')}">✗ Failed</span>`;
+    return '';
+  }
+
+  function removeItem(idx) {
+    items.splice(idx, 1);
+    renderList();
+  }
+
+  function clearAll() {
+    if (!confirm('Clear all items?')) return;
+    items.length = 0;
+    renderList();
+    document.getElementById('itemPreview').style.display = 'none';
+    document.getElementById('skuInput').focus();
+  }
+
+  // ── Execute transfers ──────────────────────────────────────────────────────
+  async function runAllTransfers() {
+    const from = document.getElementById('fromBin').value.trim();
+    const to   = document.getElementById('toBin').value.trim();
+
+    if (!from || !to) { toast('Set From and To bin racks first', 'err'); return; }
+
+    const pending = items.filter(i => i.status === 'pending');
+    if (!pending.length) { toast('Nothing to transfer', 'err'); return; }
+
+    document.getElementById('transferBtn').disabled = true;
+
+    for (const item of pending) {
+      item.status = 'sending';
+      renderList();
+
+      try {
+        await api('/api/transfer', 'POST', {
+          stockItemId: item.stockItemId,
+          locationId:  item.locationId || document.getElementById('locationSelect').value,
+          fromBinRack: from,
+          toBinRack:   to,
+          qty:         item.qty
+        });
+        item.status = 'success';
+      } catch (e) {
+        item.status = 'error';
+        item.error  = e.message;
+      }
+
+      renderList();
+    }
+
+    document.getElementById('transferBtn').disabled = false;
+
+    const done   = items.filter(i => i.status === 'success').length;
+    const failed = items.filter(i => i.status === 'error').length;
+    if (failed === 0) toast(`✓ All ${done} transfers complete!`, 'ok');
+    else toast(`${done} done, ${failed} failed`, 'err');
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  async function api(url, method = 'GET', body = null) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    return data;
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  let toastTimer;
+  function toast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `show ${type}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = ''; }, 2800);
+  }
+</script>
+</body>
+</html>
