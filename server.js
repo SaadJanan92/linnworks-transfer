@@ -80,37 +80,37 @@ app.get('/api/debug', async (req, res) => {
     const results = {};
     const hForm = { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token };
 
-    // Test A: GetStockItemsFull - no optional params at all
+    // Test A: GetStockItemsFull - dataRequirements=1 (StockLevel), searchTypes=1 (SKU)
     try {
       const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0`;
+      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=1&searchTypes=1`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.A_noOptional = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.A_noOptional = { error: e.message }; }
+      results.A_flags_1_1 = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.A_flags_1_1 = { error: e.message }; }
 
-    // Test B: GetStockItems - params wrapped as request JSON string
-    try {
-      const url = `${s.server}/api/Stock/GetStockItems`;
-      const body = `request=${encodeURIComponent(JSON.stringify({ keyword: sku, entriesPerPage: 5, startIndex: 0 }))}`;
-      const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.B_request_wrapped = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.B_request_wrapped = { error: e.message }; }
-
-    // Test C: GetStockItemsFull - params wrapped as request JSON string
+    // Test B: dataRequirements=1&dataRequirements=2, searchTypes=1
     try {
       const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = `request=${encodeURIComponent(JSON.stringify({ keyword: sku, loadCompositeParents: false, loadVariationParents: false, entriesPerPage: 5, startIndex: 0, dataRequirements: [0], searchTypes: [0] }))}`;
+      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=1&dataRequirements=2&searchTypes=1`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.C_full_wrapped = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.C_full_wrapped = { error: e.message }; }
+      results.B_flags_12_1 = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.B_flags_12_1 = { error: e.message }; }
 
-    // Test D: GetStockItems - only keyword
+    // Test C: searchTypes=2 (Title search)
     try {
-      const url = `${s.server}/api/Stock/GetStockItems`;
-      const body = `keyword=${encodeURIComponent(sku)}&count=5&pageNumber=1`;
+      const url = `${s.server}/api/Stock/GetStockItemsFull`;
+      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=1&searchTypes=2`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.D_altParams = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.D_altParams = { error: e.message }; }
+      results.C_searchType2 = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.C_searchType2 = { error: e.message }; }
+
+    // Test D: searchTypes=4 (Barcode search)
+    try {
+      const url = `${s.server}/api/Stock/GetStockItemsFull`;
+      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=1&searchTypes=4`;
+      const r = await fetch(url, { method: 'POST', headers: hForm, body });
+      results.D_searchType4 = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.D_searchType4 = { error: e.message }; }
 
     res.json({ server: s.server, results });
   } catch (e) {
