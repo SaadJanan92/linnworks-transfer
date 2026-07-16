@@ -27,7 +27,7 @@ function readLog() {
 function appendLog(entry) {
   const log = readLog();
   log.unshift(entry);
-  if (log.length > 2000) log.length = 2000;
+  if (log.length > 50000) log.length = 50000;
   try { fs.writeFileSync(LOG_FILE, JSON.stringify(log)); } catch (_) {}
 }
 
@@ -102,7 +102,7 @@ app.post('/api/logout', (req, res) => {
 
 // ─── GET /api/logs ────────────────────────────────────────────────────────────
 app.get('/api/logs', requireAuth, (req, res) => {
-  const limit = parseInt(req.query.limit) || 200;
+  const limit = parseInt(req.query.limit) || 50000;
   const log = readLog().slice(0, limit);
   res.json(log);
 });
