@@ -158,6 +158,42 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// ─── GET /api/binrack-items?locationId=&binRack= ─────────────────────────────
+// Returns map of stockItemId → { qty, sku } for all items in a specific bin rack
+app.get('/api/binrack-items', async (req, res) => {
+  const { locationId, binRack } = req.query;
+  if (!locationId || !binRack) return res.status(400).json({ error: 'locationId and binRack required' });
+
+  try {
+    // Step 1: Find bin rack ID
+    const searchRes = await lwPost('Stock/SearchBinracks',
+      `request=${encodeURIComponent(JSON.stringify({ BinRack: binRack, LocationId: locationId, StockItemId: '00000000-0000-0000-0000-000000000000', PageNumber: 1 }))}`
+    );
+    const binRacks = searchRes.BinRacks || [];
+    const found = binRacks.find(b => b.BinRack === binRack) || binRacks[0];
+    if (!found) return res.status(404).json({ error: `Bin rack "${binRack}" not found` });
+
+    // Step 2: Get all SKUs in that bin rack
+    const skuRes = await lwPost('Stock/GetBinrackSkus',
+      `request=${encodeURIComponent(JSON.stringify({ BinRackId: found.BinRackId, DetailLevel: [] }))}`
+    );
+
+    // Build map: stockItemId → { qty, sku }
+    const items = {};
+    for (const batch of (skuRes.Skus || [])) {
+      for (const inv of (batch.Inventory || [])) {
+        if (!inv.IsDeleted && inv.BinRackId === found.BinRackId) {
+          const id = String(batch.StockItemId).toLowerCase();
+          items[id] = { qty: (items[id] ? items[id].qty : 0) + inv.Quantity, sku: batch.SKU };
+        }
+      }
+    }
+    res.json({ binRackId: found.BinRackId, items });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── GET /api/transfer-debug ──────────────────────────────────────────────────
 // ?stockItemId=&locationId=&fromBinRack=&toBinRack=
 app.get('/api/transfer-debug', async (req, res) => {
