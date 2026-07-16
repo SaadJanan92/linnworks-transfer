@@ -112,7 +112,7 @@
     input.scan-focus { border-color: #f59e0b; background: #fffef0; box-shadow: 0 0 0 3px rgba(245,158,11,0.12); }
 
     .scan-row { display: flex; flex-direction: column; gap: 6px; }
-    .scan-row-inputs { display: grid; grid-template-columns: 1fr 80px; gap: 6px; }
+    .scan-row-inputs { display: grid; grid-template-columns: 1fr 60px; gap: 6px; }
 
     button {
       padding: 13px 14px;
@@ -245,18 +245,12 @@
     </select>
   </div>
 
-  <!-- Bin Racks -->
+  <!-- From Bin Rack only -->
   <div class="card">
-    <div class="card-title">2 — Transfer Route</div>
-    <div class="bin-row">
-      <div class="field">
-        <label>📤 From Bin Rack</label>
-        <input type="text" id="fromBin" placeholder="Scan source bin rack…" autocomplete="off" />
-      </div>
-      <div class="field">
-        <label>📥 To Bin Rack</label>
-        <input type="text" id="toBin" placeholder="Scan destination bin rack…" autocomplete="off" />
-      </div>
+    <div class="card-title">2 — Source Bin Rack</div>
+    <div class="field">
+      <label>📤 From Bin Rack</label>
+      <input type="text" id="fromBin" placeholder="Scan source bin rack…" autocomplete="off" />
     </div>
   </div>
 
@@ -304,7 +298,19 @@
 
     <div class="action-row" style="margin-top:16px">
       <button class="btn-red" onclick="clearAll()">🗑 Clear</button>
-      <button class="btn-green" id="transferBtn" onclick="runAllTransfers()">⚡ Transfer All</button>
+      <button class="btn-green" id="transferBtn" onclick="promptTransfer()">⚡ Transfer</button>
+    </div>
+  </div>
+
+  <!-- TO bin rack modal -->
+  <div id="toModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:white;border-radius:14px;padding:24px;width:100%;max-width:380px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:6px;">📥 Destination Bin Rack</div>
+      <div style="font-size:13px;color:#888;margin-bottom:16px;">Scan or type where to move the items</div>
+      <input type="text" id="toBin" placeholder="Scan destination bin rack…" autocomplete="off"
+        style="width:100%;padding:14px;border:2px solid #e0e4ef;border-radius:8px;font-size:16px;font-family:inherit;margin-bottom:14px;outline:none;" />
+      <button class="btn-green" style="width:100%;padding:14px;font-size:16px;" onclick="confirmTransfer()">✓ Confirm Transfer</button>
+      <button class="btn-red" style="width:100%;padding:12px;font-size:14px;margin-top:8px;" onclick="closeModal()">Cancel</button>
     </div>
   </div>
 
@@ -351,14 +357,8 @@
   // ── Keyboard/scan flow ─────────────────────────────────────────────────────
   document.getElementById('fromBin').addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.value.trim()) {
-      document.getElementById('toBin').focus();
       e.target.classList.add('filled');
-    }
-  });
-  document.getElementById('toBin').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && e.target.value.trim()) {
       document.getElementById('skuInput').focus();
-      e.target.classList.add('filled');
     }
   });
   document.getElementById('skuInput').addEventListener('keydown', e => {
@@ -369,7 +369,7 @@
   });
 
   // Scan-focus highlight
-  ['fromBin','toBin','skuInput'].forEach(id => {
+  ['fromBin','skuInput'].forEach(id => {
     const el = document.getElementById(id);
     el.addEventListener('focus', () => el.classList.add('scan-focus'));
     el.addEventListener('blur',  () => el.classList.remove('scan-focus'));
@@ -444,9 +444,8 @@
     if (!items.length) return;
 
     const from = document.getElementById('fromBin').value || '—';
-    const to   = document.getElementById('toBin').value   || '—';
     document.getElementById('sumFrom').textContent  = from;
-    document.getElementById('sumTo').textContent    = to;
+    document.getElementById('sumTo').textContent    = '?';
     document.getElementById('statSKUs').textContent = items.length;
     document.getElementById('statUnits').textContent = items.reduce((s,i) => s + i.qty, 0);
 
@@ -483,22 +482,43 @@
     document.getElementById('skuInput').focus();
   }
 
-  // ── Execute transfers ──────────────────────────────────────────────────────
-  async function runAllTransfers() {
+  // ── Transfer flow ──────────────────────────────────────────────────────────
+  function promptTransfer() {
     const from = document.getElementById('fromBin').value.trim();
-    const to   = document.getElementById('toBin').value.trim();
-
-    if (!from || !to) { toast('Set From and To bin racks first', 'err'); return; }
-
+    if (!from) { toast('Scan the source bin rack first', 'err'); return; }
     const pending = items.filter(i => i.status === 'pending');
-    if (!pending.length) { toast('Nothing to transfer', 'err'); return; }
+    if (!pending.length) { toast('No items to transfer', 'err'); return; }
 
+    // Show modal
+    const modal = document.getElementById('toModal');
+    modal.style.display = 'flex';
+    const toInput = document.getElementById('toBin');
+    toInput.value = '';
+    setTimeout(() => toInput.focus(), 100);
+
+    // Enter key in modal confirms
+    toInput.onkeydown = e => { if (e.key === 'Enter' && toInput.value.trim()) confirmTransfer(); };
+  }
+
+  function closeModal() {
+    document.getElementById('toModal').style.display = 'none';
+  }
+
+  async function confirmTransfer() {
+    const to = document.getElementById('toBin').value.trim();
+    if (!to) { toast('Enter the destination bin rack', 'err'); return; }
+    closeModal();
+
+    const from = document.getElementById('fromBin').value.trim();
+    const pending = items.filter(i => i.status === 'pending');
+
+    // Update summary bar
+    document.getElementById('sumTo').textContent = to;
     document.getElementById('transferBtn').disabled = true;
 
     for (const item of pending) {
       item.status = 'sending';
       renderList();
-
       try {
         await api('/api/transfer', 'POST', {
           stockItemId:  item.stockItemId,
@@ -513,12 +533,10 @@
         item.status = 'error';
         item.error  = e.message;
       }
-
       renderList();
     }
 
     document.getElementById('transferBtn').disabled = false;
-
     const done   = items.filter(i => i.status === 'success').length;
     const failed = items.filter(i => i.status === 'error').length;
     if (failed === 0) toast(`✓ All ${done} transfers complete!`, 'ok');
