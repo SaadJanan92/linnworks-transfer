@@ -136,25 +136,31 @@ app.get('/api/search', async (req, res) => {
 
   try {
     const data = await lwApi('Stock/GetStockItemsFull', {
-      searchField: 'SKU',
-      searchTerm:  sku,
-      pageSize:    5,
-      pageNumber:  1
+      keyword:               sku,
+      loadCompositeParents:  false,
+      loadVariationParents:  false,
+      entriesPerPage:        5,
+      startIndex:            0,
+      dataRequirements:      JSON.stringify([0, 1, 2, 8]),
+      searchTypes:           JSON.stringify([0])
     });
 
-    if (!data || data.length === 0) {
+    const items = Array.isArray(data) ? data : (data.Items || data.Results || []);
+
+    if (!items || items.length === 0) {
       return res.status(404).json({ error: `No item found for SKU: ${sku}` });
     }
 
-    // Return the first match with its stock levels and bin racks
-    const item = data[0];
+    // Find exact SKU match first, fall back to first result
+    const item = items.find(i => (i.ItemNumber || '').toLowerCase() === sku.toLowerCase()) || items[0];
+
     res.json({
       stockItemId: item.StockItemId,
       sku:         item.ItemNumber,
       title:       item.ItemTitle,
       stockLevels: (item.StockLevels || []).map(sl => ({
-        locationId:   sl.Location.StockLocationId,
-        locationName: sl.Location.LocationName,
+        locationId:   sl.Location ? sl.Location.StockLocationId : sl.StockLocationId,
+        locationName: sl.Location ? sl.Location.LocationName : sl.LocationName,
         available:    sl.Available,
         inOrders:     sl.InOrders,
         binRack:      sl.BinRack || ''
