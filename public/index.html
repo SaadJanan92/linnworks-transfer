@@ -424,22 +424,37 @@
 
       playSuccess();
 
-      const existing = items.find(i => i.sku === sku);
+      // Available qty from search result
+      const availableQty = firstLevel ? (firstLevel.available || 0) : 0;
+
+      const existing = items.find(i => i.sku.trim().toLowerCase() === item.sku.trim().toLowerCase());
       if (existing) {
-        existing.qty += qty;
-        toast(`+${qty} added to ${sku} (total: ${existing.qty})`, 'ok');
+        const newTotal = existing.qty + qty;
+        if (availableQty > 0 && newTotal > availableQty) {
+          playError();
+          toast(`Only ${availableQty} available — already added ${existing.qty}`, 'err');
+        } else {
+          existing.qty = newTotal;
+          toast(`+${qty} → ${item.sku} (total: ${newTotal})`, 'ok');
+        }
       } else {
-        items.push({
-          stockItemId:  item.stockItemId,
-          sku:          item.sku,
-          title:        item.title,
-          qty,
-          locationId:   realLocId,
-          locationName: realLocName,
-          status:       'pending',
-          error:        null
-        });
-        toast(`Added: ${item.title}`, 'ok');
+        if (availableQty > 0 && qty > availableQty) {
+          playError();
+          toast(`Only ${availableQty} available for this SKU`, 'err');
+        } else {
+          items.push({
+            stockItemId:  item.stockItemId,
+            sku:          item.sku.trim(),
+            title:        item.title,
+            qty,
+            availableQty,
+            locationId:   realLocId,
+            locationName: realLocName,
+            status:       'pending',
+            error:        null
+          });
+          toast(`Added: ${item.title}`, 'ok');
+        }
       }
 
       document.getElementById('skuInput').value = '';
