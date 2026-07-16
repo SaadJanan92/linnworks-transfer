@@ -29,7 +29,6 @@ app.post('/api/login', async (req, res) => {
   }
 
   try {
-    // Authenticate user against Linnworks Multilogin endpoint
     const params = new URLSearchParams({
       Email: username,
       Password: password,
@@ -43,21 +42,31 @@ app.post('/api/login', async (req, res) => {
       body: params.toString()
     });
 
+    const rawText = await lwRes.text();
+    console.log('Linnworks Multilogin status:', lwRes.status, 'body:', rawText.substring(0, 500));
+
     if (!lwRes.ok) {
+      return res.status(401).json({ error: `Invalid username or password (LW: ${lwRes.status})` });
+    }
+
+    let lwData;
+    try { lwData = JSON.parse(rawText); } catch(_) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    const lwData = await lwRes.json();
+    // Multilogin returns an array of accounts — pick first one
+    const accounts = Array.isArray(lwData) ? lwData : [lwData];
+    const account = accounts[0];
 
-    // Multilogin may return an array (multiple accounts) or a single object
-    const account = Array.isArray(lwData) ? lwData[0] : lwData;
-    if (!account || account.Token === undefined) {
+    // Accept if we got any account object back (even without Token — Linnworks
+    // may use a different field name or require a second step)
+    if (!account) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    // Build display name from Linnworks response
-    const displayName = [account.UserName, account.FullName, account.Email]
-      .find(v => v && v.trim()) || username;
+    // Build display name from Linnworks response fields
+    const displayName = account.UserName || account.FullName || account.AccountName ||
+      account.Name || account.Email || username;
 
     const token = crypto.randomBytes(32).toString('hex');
     activeSessions.set(token, {
@@ -69,7 +78,7 @@ app.post('/api/login', async (req, res) => {
     res.json({ token, displayName });
   } catch (e) {
     console.error('Login error:', e.message);
-    res.status(500).json({ error: 'Login failed — check server connection' });
+    res.status(500).json({ error: `Login failed: ${e.message}` });
   }
 });
 
