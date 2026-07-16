@@ -559,13 +559,6 @@
     renderList();
   }
 
-  function clearAll() {
-    if (!confirm('Clear all items?')) return;
-    items.length = 0;
-    renderList();
-    document.getElementById('itemPreview').style.display = 'none';
-    document.getElementById('skuInput').focus();
-  }
 
   // ── Transfer flow ──────────────────────────────────────────────────────────
   function promptTransfer() {
@@ -634,8 +627,30 @@
     document.getElementById('transferBtn').disabled = false;
     const done   = items.filter(i => i.status === 'success').length;
     const failed = items.filter(i => i.status === 'error').length;
-    if (failed === 0) toast(`✓ All ${done} transfers complete!`, 'ok');
-    else toast(`${done} done, ${failed} failed`, 'err');
+
+    if (failed === 0) {
+      toast(`✓ All ${done} transfers complete!`, 'ok');
+      // Auto-clear after success — keep FROM bin rack for next batch
+      setTimeout(() => {
+        items.length = 0;
+        document.getElementById('itemPreview').style.display = 'none';
+        document.getElementById('skuInput').value = '';
+        document.getElementById('qtyInput').value = 1;
+        renderList();
+        document.getElementById('skuInput').focus();
+      }, 1500);
+    } else {
+      toast(`${done} done, ${failed} failed`, 'err');
+    }
+  }
+
+  function clearAll() {
+    items.length = 0;
+    document.getElementById('itemPreview').style.display = 'none';
+    document.getElementById('skuInput').value = '';
+    document.getElementById('qtyInput').value = 1;
+    renderList();
+    document.getElementById('skuInput').focus();
   }
 
   // ── Audio feedback ─────────────────────────────────────────────────────────
