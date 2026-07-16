@@ -339,8 +339,9 @@ app.post('/api/transfer', requireAuth, async (req, res) => {
       return res.status(404).json({ error: `Item not found in bin rack "${fromBinRack}". Check the source bin rack name.` });
     }
 
+    const staffName = req.user ? req.user.displayName : 'Unknown';
     const moveRes = await lwPost('Stock/CreateWarehouseMove',
-      `request=${encodeURIComponent(JSON.stringify({ BatchInventoryId: batchInventoryId, BinrackIdDestination: dstId, Quantity: qty, TxType: 'InTransit' }))}`
+      `request=${encodeURIComponent(JSON.stringify({ BatchInventoryId: batchInventoryId, BinrackIdDestination: dstId, Quantity: qty, TxType: 'InTransit', Note: `Transferred by: ${staffName}` }))}`
     );
 
     const moveId = moveRes.WarehouseMove && moveRes.WarehouseMove.MoveId;
