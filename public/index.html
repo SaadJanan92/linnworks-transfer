@@ -408,6 +408,26 @@
       const realLocId     = firstLevel ? firstLevel.locationId   : null;
       const realLocName   = firstLevel ? firstLevel.locationName : null;
 
+      // Check if item is actually in the FROM bin rack
+      const fromBin = document.getElementById('fromBin').value.trim().toUpperCase();
+      const itemBinRack = firstLevel && firstLevel.binRack ? firstLevel.binRack.toUpperCase() : '';
+      const isInFromBin = !fromBin || itemBinRack === fromBin;
+
+      if (isInFromBin) {
+        playSuccess();
+      } else {
+        playError();
+        preview.className = 'notfound';
+        preview.innerHTML = `
+          <div class="item-title">⚠ Not in ${esc(fromBin)}</div>
+          <div class="item-sku">${esc(item.title)}</div>
+          <div style="font-size:12px;color:#888;margin-top:4px;">Currently in: <strong>${esc(firstLevel.binRack || 'Unknown')}</strong></div>`;
+        document.getElementById('skuInput').value = '';
+        document.getElementById('qtyInput').value = 1;
+        document.getElementById('skuInput').focus();
+        return;
+      }
+
       const existing = items.find(i => i.sku === sku);
       if (existing) {
         existing.qty += qty;
@@ -432,6 +452,7 @@
       renderList();
 
     } catch (e) {
+      playError();
       preview.className = 'notfound';
       preview.innerHTML = `<strong>Not found:</strong> ${esc(e.message)}`;
       toast('SKU not found in Linnworks', 'err');
@@ -541,6 +562,39 @@
     const failed = items.filter(i => i.status === 'error').length;
     if (failed === 0) toast(`✓ All ${done} transfers complete!`, 'ok');
     else toast(`${done} done, ${failed} failed`, 'err');
+  }
+
+  // ── Audio feedback ─────────────────────────────────────────────────────────
+  let audioCtx = null;
+  function getAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+
+  function beep(freq, duration, type = 'sine', vol = 0.4) {
+    const ctx = getAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(vol, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  }
+
+  function playSuccess() {
+    // Two ascending tones — like a standard scanner success beep
+    beep(1200, 0.1);
+    setTimeout(() => beep(1800, 0.15), 110);
+  }
+
+  function playError() {
+    // Two low descending tones — error sound
+    beep(400, 0.15, 'square', 0.3);
+    setTimeout(() => beep(250, 0.2, 'square', 0.3), 170);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
