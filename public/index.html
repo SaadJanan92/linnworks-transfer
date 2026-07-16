@@ -89,8 +89,8 @@
     }
     select:focus { border-color: #1a1a2e; }
 
-    /* Always side-by-side for bin rack fields */
-    .bin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    /* Stacked bin rack fields — avoids right-edge cutoff on Zebra */
+    .bin-row { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px; }
 
     .field { display: flex; flex-direction: column; gap: 4px; }
     .field label { font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
