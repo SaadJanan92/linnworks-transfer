@@ -9,7 +9,8 @@
     transform: rotate(180deg);
     transform-origin: center center;
   }
-  @media screen and (orientation: landscape) {
+  /* Only block landscape on small mobile screens (Zebra), not on desktop */
+  @media screen and (orientation: landscape) and (max-width: 900px) {
     body::before {
       content: 'Please rotate your device to portrait mode';
       position: fixed; inset: 0; z-index: 9999;
@@ -723,6 +724,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 // ── App init (runs after login) ────────────────────────────────────────────
 async function initApp() {
   await loadLocations();
+  restoreState();
   document.getElementById('skuInput').focus();
 }
 
@@ -741,6 +743,47 @@ async function loadLocations() {
 // ── State ──────────────────────────────────────────────────────────────────
 const items = [];
 let binRackContents = null;
+
+// ── Persist scan data so rotation/reload never loses items ─────────────────
+function saveState() {
+  try {
+    sessionStorage.setItem('lw_items', JSON.stringify(items));
+    sessionStorage.setItem('lw_fromBin', document.getElementById('fromBin').value || '');
+    const locSel = document.getElementById('locationSelect');
+    if (locSel) sessionStorage.setItem('lw_location', locSel.value || '');
+  } catch(_) {}
+}
+function restoreState() {
+  try {
+    const saved = sessionStorage.getItem('lw_items');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length) {
+        items.push(...parsed);
+      }
+    }
+    const fromBin = sessionStorage.getItem('lw_fromBin');
+    if (fromBin) {
+      const el = document.getElementById('fromBin');
+      if (el) { el.value = fromBin; if (fromBin) el.classList.add('filled'); }
+    }
+    const loc = sessionStorage.getItem('lw_location');
+    if (loc) {
+      const sel = document.getElementById('locationSelect');
+      if (sel) sel.value = loc;
+    }
+    if (items.length) {
+      renderList();
+      toast(`Restored ${items.length} item(s) from before`, 'ok');
+    }
+  } catch(_) {}
+}
+function clearState() {
+  try {
+    sessionStorage.removeItem('lw_items');
+    sessionStorage.removeItem('lw_fromBin');
+  } catch(_) {}
+}
 
 // ── Keyboard/scan flow ─────────────────────────────────────────────────────
 document.getElementById('fromBin').addEventListener('keydown', async e => {
@@ -897,6 +940,7 @@ async function handleScan() {
     document.getElementById('qtyInput').value = 1;
     document.getElementById('skuInput').focus();
     renderList();
+    saveState();
 
   } catch (e) {
     playError();
@@ -941,6 +985,7 @@ function statusPill(item) {
 function removeItem(idx) {
   items.splice(idx, 1);
   renderList();
+  saveState();
 }
 
 // ── Transfer flow ──────────────────────────────────────────────────────────
@@ -1012,6 +1057,7 @@ async function confirmTransfer() {
 
   if (failed === 0) {
     playTransferComplete();
+    clearState();
     toast(`✓ All ${done} transfers complete!`, 'ok');
     setTimeout(() => {
       items.length = 0;
@@ -1028,6 +1074,7 @@ async function confirmTransfer() {
 
 function clearAll() {
   items.length = 0;
+  clearState();
   document.getElementById('itemPreview').style.display = 'none';
   document.getElementById('skuInput').value = '';
   document.getElementById('qtyInput').value = 1;
