@@ -374,6 +374,24 @@
     if (e.key === 'Enter') handleScan();
   });
 
+  // Double-tap FROM bin rack to clear it
+  let fromBinTapTimer = null;
+  document.getElementById('fromBin').addEventListener('click', () => {
+    if (fromBinTapTimer) {
+      clearTimeout(fromBinTapTimer);
+      fromBinTapTimer = null;
+      // Double tap — clear the field
+      const el = document.getElementById('fromBin');
+      el.value = '';
+      el.classList.remove('filled', 'scan-focus');
+      binRackContents = null;
+      toast('Bin rack cleared — scan new source', '');
+      el.focus();
+    } else {
+      fromBinTapTimer = setTimeout(() => { fromBinTapTimer = null; }, 400);
+    }
+  });
+
   // Scan-focus highlight
   ['fromBin','skuInput'].forEach(id => {
     const el = document.getElementById(id);
@@ -561,8 +579,9 @@
     toInput.value = '';
     setTimeout(() => toInput.focus(), 100);
 
-    // Enter key in modal confirms
-    toInput.onkeydown = e => { if (e.key === 'Enter' && toInput.value.trim()) confirmTransfer(); };
+    // Do NOT auto-confirm on Enter — Zebra scanner sends Enter after scan
+    // User must tap the Confirm Transfer button
+    toInput.onkeydown = null;
   }
 
   function closeModal() {
