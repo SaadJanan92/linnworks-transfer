@@ -46,7 +46,9 @@ app.post('/api/login', async (req, res) => {
     console.log('Linnworks Multilogin status:', lwRes.status, 'body:', rawText.substring(0, 500));
 
     if (!lwRes.ok) {
-      return res.status(401).json({ error: `Invalid username or password (LW: ${lwRes.status})` });
+      let lwMsg = 'Invalid username or password';
+      try { const j = JSON.parse(rawText); lwMsg = j.Message || lwMsg; } catch(_) {}
+      return res.status(401).json({ error: lwMsg });
     }
 
     let lwData;
