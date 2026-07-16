@@ -336,7 +336,7 @@ app.get('/api/transfer-debug', requireAuth, async (req, res) => {
 
 // ─── POST /api/transfer ───────────────────────────────────────────────────────
 app.post('/api/transfer', requireAuth, async (req, res) => {
-  const { stockItemId, locationId, fromBinRack, toBinRack, qty } = req.body;
+  const { stockItemId, locationId, fromBinRack, toBinRack, qty, sku, title, transferId } = req.body;
   if (!stockItemId || !locationId || !fromBinRack || !toBinRack || !qty) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
@@ -403,11 +403,12 @@ app.post('/api/transfer', requireAuth, async (req, res) => {
     appendLog({
       timestamp: new Date().toISOString(),
       user: req.user ? req.user.displayName : 'Unknown',
+      transferId: transferId || null,
       fromBinRack,
       toBinRack,
-      locationId,
       qty,
-      stockItemId,
+      sku: sku || stockItemId,
+      title: title || '',
       moveId: moveId || null
     });
 
