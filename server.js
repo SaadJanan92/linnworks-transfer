@@ -199,27 +199,12 @@ app.get('/api/transfer-debug', async (req, res) => {
       } catch(e) { results.step3_binRackSkus = { error: e.message }; }
     }
 
-    // Step 4: Try CreateWarehouseMove (Open type — won't physically move yet)
-    if (batchInventoryId && dstBinRacks && dstBinRacks.length) {
-      const dstId = dstBinRacks[0].BinRackId;
-      try {
-        const r = await lwPost('Stock/CreateWarehouseMove',
-          `request=${encodeURIComponent(JSON.stringify({ BatchInventoryId: batchInventoryId, BinrackIdDestination: dstId, Quantity: 1, TxType: 'Open' }))}`
-        );
-        results.step4_createMove = r;
-        // Step 5: Try to complete it
-        const moveId = r.WarehouseMove && (r.WarehouseMove.WarehouseMoveId || r.WarehouseMove.Id || r.WarehouseMove.id);
-        results.step4_moveId = moveId;
-        if (moveId) {
-          try {
-            const c = await lwPost('Stock/CompleteWarehouseMove',
-              `request=${encodeURIComponent(JSON.stringify({ WarehouseMoveId: moveId }))}`
-            );
-            results.step5_complete = c || 'ok';
-          } catch(e) { results.step5_complete = { error: e.message }; }
-        }
-      } catch(e) { results.step4_createMove = { error: e.message }; }
-    }
+    // Step 4: Summary — ready to transfer
+    results.step4_ready = batchInventoryId && dstBinRacks && dstBinRacks.length ? {
+      ready: true,
+      BatchInventoryId: batchInventoryId,
+      dstBinRackId: dstBinRacks[0].BinRackId
+    } : { ready: false };
 
     res.json(results);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -281,13 +266,20 @@ app.post('/api/transfer', async (req, res) => {
     );
 
     // ── Step 5: Complete the move immediately ──────────────────────────────
-    const moveId = moveRes.WarehouseMove && (moveRes.WarehouseMove.WarehouseMoveId || moveRes.WarehouseMove.Id);
+    const moveId = moveRes.WarehouseMove && moveRes.WarehouseMove.MoveId;
     if (moveId) {
       try {
         await lwPost('Stock/CompleteWarehouseMove',
-          `request=${encodeURIComponent(JSON.stringify({ WarehouseMoveId: moveId }))}`
+          `request=${encodeURIComponent(JSON.stringify({ MoveId: moveId }))}`
         );
-      } catch (_) { /* non-fatal — move was created, completion can be retried */ }
+      } catch (e2) {
+        // Try alternate field name
+        try {
+          await lwPost('Stock/CompleteWarehouseMove',
+            `request=${encodeURIComponent(JSON.stringify({ WarehouseMoveId: moveId }))}`
+          );
+        } catch (_) { /* non-fatal */ }
+      }
     }
 
     res.json({ success: true, srcBinRackId: srcId, dstBinRackId: dstId, batchInventoryId, moveId });
