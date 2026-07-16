@@ -80,37 +80,46 @@ app.get('/api/debug', async (req, res) => {
     const results = {};
     const hForm = { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token };
 
-    // Test A: GetStockItemsFull - dataRequirements=1 (StockLevel), searchTypes=1 (SKU)
+    // Test A: bracket notation for arrays
     try {
       const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=1&searchTypes=1`;
+      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements[0]=1&searchTypes[0]=1`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.A_flags_1_1 = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.A_flags_1_1 = { error: e.message }; }
+      results.A_bracket = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.A_bracket = { error: e.message }; }
 
-    // Test B: dataRequirements=1&dataRequirements=2, searchTypes=1
+    // Test B: GetStockItemByItemNumber (simpler endpoint)
     try {
-      const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=1&dataRequirements=2&searchTypes=1`;
+      const url = `${s.server}/api/Stock/GetStockItemByItemNumber`;
+      const body = `itemNumber=${encodeURIComponent(sku)}`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.B_flags_12_1 = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.B_flags_12_1 = { error: e.message }; }
+      results.B_byItemNumber = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.B_byItemNumber = { error: e.message }; }
 
-    // Test C: searchTypes=2 (Title search)
+    // Test C: GetStockItemByBarcode
     try {
-      const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=1&searchTypes=2`;
+      const url = `${s.server}/api/Stock/GetStockItemByBarcode`;
+      const body = `barcode=${encodeURIComponent(sku)}`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.C_searchType2 = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.C_searchType2 = { error: e.message }; }
+      results.C_byBarcode = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.C_byBarcode = { error: e.message }; }
 
-    // Test D: searchTypes=4 (Barcode search)
+    // Test D: GetInventoryItemsByIds with search first via SearchStockItems
     try {
-      const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = `keyword=${encodeURIComponent(sku)}&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=1&searchTypes=4`;
+      const url = `${s.server}/api/Inventory/SearchItems`;
+      const body = `searchQuery=${encodeURIComponent(sku)}&pageNumber=1&pageSize=5`;
       const r = await fetch(url, { method: 'POST', headers: hForm, body });
-      results.D_searchType4 = { status: r.status, body: await r.json().catch(async () => await r.text()) };
-    } catch (e) { results.D_searchType4 = { error: e.message }; }
+      results.D_searchItems = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.D_searchItems = { error: e.message }; }
+
+    // Test E: GetStockItems with no params except keyword - raw form
+    try {
+      const url = `${s.server}/api/Stock/GetStockItems`;
+      const r = await fetch(`${url}?keyword=${encodeURIComponent(sku)}&entriesPerPage=5&startIndex=0`, {
+        method: 'POST', headers: { 'Authorization': s.token }
+      });
+      results.E_getNoBody = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.E_getNoBody = { error: e.message }; }
 
     res.json({ server: s.server, results });
   } catch (e) {
