@@ -150,28 +150,71 @@ app.get('/api/search', async (req, res) => {
 });
 
 // ─── POST /api/transfer ───────────────────────────────────────────────────────
-// Body: { stockItemId, locationId, locationName, fromBinRack, toBinRack, qty }
+// Body: { stockItemId, locationId, fromBinRack, toBinRack, qty }
 app.post('/api/transfer', async (req, res) => {
-  const { stockItemId, locationId, locationName, fromBinRack, toBinRack, qty } = req.body;
-
-  if (!stockItemId || !toBinRack) {
+  const { stockItemId, locationId, fromBinRack, toBinRack, qty } = req.body;
+  if (!stockItemId || !locationId || !fromBinRack || !toBinRack || !qty) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   try {
-    // UpdateStockLevelsBulk — updates the Binrack field on the stock level
-    const request = {
-      Items: [{
-        StockItemId:      stockItemId,
-        StockLocationId:  locationId   || undefined,
-        StockLocationName: locationName || undefined,
-        Binrack:          toBinRack,
-        RowIndex:         0
-      }]
-    };
-    const body = `request=${encodeURIComponent(JSON.stringify(request))}`;
-    const result = await lwPost('Stock/UpdateStockLevelsBulk', body);
-    res.json({ success: true, result });
+    // ── Step 1: Find source bin rack integer ID ────────────────────────────
+    const srcRes = await lwPost('Stock/SearchBinracks',
+      `request=${encodeURIComponent(JSON.stringify({ BinRack: fromBinRack, LocationId: locationId, StockItemId: stockItemId, PageNumber: 1 }))}`
+    );
+    const srcBinRacks = srcRes.BinRacks || [];
+    const srcBinRack = srcBinRacks.find(b => b.BinRack === fromBinRack) || srcBinRacks[0];
+    if (!srcBinRack) return res.status(404).json({ error: `Source bin rack "${fromBinRack}" not found in WMS` });
+    const srcId = srcBinRack.BinRackId;
+
+    // ── Step 2: Find destination bin rack integer ID ───────────────────────
+    const dstRes = await lwPost('Stock/SearchBinracks',
+      `request=${encodeURIComponent(JSON.stringify({ BinRack: toBinRack, LocationId: locationId, StockItemId: stockItemId, PageNumber: 1 }))}`
+    );
+    const dstBinRacks = dstRes.BinRacks || [];
+    const dstBinRack = dstBinRacks.find(b => b.BinRack === toBinRack) || dstBinRacks[0];
+    if (!dstBinRack) return res.status(404).json({ error: `Destination bin rack "${toBinRack}" not found in WMS` });
+    const dstId = dstBinRack.BinRackId;
+
+    // ── Step 3: Get batch inventory items in source bin rack ───────────────
+    const skuRes = await lwPost('Stock/GetBinrackSkus',
+      `request=${encodeURIComponent(JSON.stringify({ BinRackId: srcId, DetailLevel: [] }))}`
+    );
+    const skus = skuRes.Skus || [];
+
+    // Find the BatchInventoryId for our stock item in this bin rack
+    let batchInventoryId = null;
+    for (const batch of skus) {
+      if (String(batch.StockItemId).toLowerCase() === String(stockItemId).toLowerCase()) {
+        for (const inv of (batch.Inventory || batch.Item || [])) {
+          if (!inv.IsDeleted && (inv.BinRackId === srcId || inv.BinRack === fromBinRack)) {
+            batchInventoryId = inv.BatchInventoryId;
+            break;
+          }
+        }
+      }
+      if (batchInventoryId) break;
+    }
+    if (!batchInventoryId) {
+      return res.status(404).json({ error: `Item not found in bin rack "${fromBinRack}". Check the source bin rack name.` });
+    }
+
+    // ── Step 4: Create warehouse move (InTransit) ──────────────────────────
+    const moveRes = await lwPost('Stock/CreateWarehouseMove',
+      `request=${encodeURIComponent(JSON.stringify({ BatchInventoryId: batchInventoryId, BinrackIdDestination: dstId, Quantity: qty, TxType: 'InTransit' }))}`
+    );
+
+    // ── Step 5: Complete the move immediately ──────────────────────────────
+    const moveId = moveRes.WarehouseMove && (moveRes.WarehouseMove.WarehouseMoveId || moveRes.WarehouseMove.Id);
+    if (moveId) {
+      try {
+        await lwPost('Stock/CompleteWarehouseMove',
+          `request=${encodeURIComponent(JSON.stringify({ WarehouseMoveId: moveId }))}`
+        );
+      } catch (_) { /* non-fatal — move was created, completion can be retried */ }
+    }
+
+    res.json({ success: true, srcBinRackId: srcId, dstBinRackId: dstId, batchInventoryId, moveId });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
