@@ -149,6 +149,44 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// ─── GET /api/transfer-debug ──────────────────────────────────────────────────
+// ?stockItemId=&locationId=&fromBinRack=&toBinRack=
+app.get('/api/transfer-debug', async (req, res) => {
+  const { stockItemId, locationId, fromBinRack, toBinRack } = req.query;
+  const results = {};
+  try {
+    // Step 1: Search source bin rack
+    try {
+      const r = await lwPost('Stock/SearchBinracks',
+        `request=${encodeURIComponent(JSON.stringify({ BinRack: fromBinRack, LocationId: locationId, StockItemId: stockItemId, PageNumber: 1 }))}`
+      );
+      results.step1_sourceBinRack = r;
+    } catch(e) { results.step1_sourceBinRack = { error: e.message }; }
+
+    // Step 2: Search dest bin rack
+    try {
+      const r = await lwPost('Stock/SearchBinracks',
+        `request=${encodeURIComponent(JSON.stringify({ BinRack: toBinRack, LocationId: locationId, StockItemId: stockItemId, PageNumber: 1 }))}`
+      );
+      results.step2_destBinRack = r;
+    } catch(e) { results.step2_destBinRack = { error: e.message }; }
+
+    // Step 3: Get SKUs in source bin rack (need srcId from step 1)
+    const srcBinRacks = results.step1_sourceBinRack && results.step1_sourceBinRack.BinRacks;
+    if (srcBinRacks && srcBinRacks.length) {
+      const srcId = srcBinRacks[0].BinRackId;
+      try {
+        const r = await lwPost('Stock/GetBinrackSkus',
+          `request=${encodeURIComponent(JSON.stringify({ BinRackId: srcId, DetailLevel: [] }))}`
+        );
+        results.step3_binRackSkus = r;
+      } catch(e) { results.step3_binRackSkus = { error: e.message }; }
+    }
+
+    res.json(results);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── POST /api/transfer ───────────────────────────────────────────────────────
 // Body: { stockItemId, locationId, fromBinRack, toBinRack, qty }
 app.post('/api/transfer', async (req, res) => {
