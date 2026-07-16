@@ -398,8 +398,10 @@
           `).join('')}
         </div>`;
 
-      // Use the real locationId/name from search result (not the dropdown placeholder)
-      const firstLevel    = (item.stockLevels && item.stockLevels[0]) ? item.stockLevels[0] : null;
+      // Use the stock level matching the selected location (WMS New), not just the first one
+      const selectedLocId = document.getElementById('locationSelect').value;
+      const matchedLevel  = (item.stockLevels || []).find(sl => sl.locationId === selectedLocId);
+      const firstLevel    = matchedLevel || (item.stockLevels && item.stockLevels[0]) || null;
       const realLocId     = firstLevel ? firstLevel.locationId   : null;
       const realLocName   = firstLevel ? firstLevel.locationName : null;
 
