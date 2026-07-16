@@ -52,9 +52,9 @@
     .container {
       max-width: 860px;
       margin: 0 auto;
-      padding: 10px 8px;
-      padding-left: calc(8px + env(safe-area-inset-left));
-      padding-right: calc(8px + env(safe-area-inset-right));
+      padding: 10px 14px;
+      padding-left: calc(14px + env(safe-area-inset-left));
+      padding-right: calc(14px + env(safe-area-inset-right));
       padding-bottom: calc(10px + env(safe-area-inset-bottom));
     }
 
@@ -111,7 +111,8 @@
     input.filled { border-color: #00c896; background: #f0fdf8; }
     input.scan-focus { border-color: #f59e0b; background: #fffef0; box-shadow: 0 0 0 3px rgba(245,158,11,0.12); }
 
-    .scan-row { display: grid; grid-template-columns: 1fr 72px 60px; gap: 6px; align-items: end; }
+    .scan-row { display: flex; flex-direction: column; gap: 6px; }
+    .scan-row-inputs { display: grid; grid-template-columns: 1fr 80px; gap: 6px; }
 
     button {
       padding: 13px 14px;
@@ -263,18 +264,17 @@
   <div class="card">
     <div class="card-title">3 — Scan Items</div>
     <div class="scan-row">
-      <div class="field">
-        <label>SKU / Barcode</label>
-        <input type="text" id="skuInput" placeholder="Scan barcode…" autocomplete="off" />
+      <div class="scan-row-inputs">
+        <div class="field">
+          <label>SKU / Barcode</label>
+          <input type="text" id="skuInput" placeholder="Scan barcode…" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label>Qty</label>
+          <input type="number" id="qtyInput" value="1" min="1" />
+        </div>
       </div>
-      <div class="field">
-        <label>Qty</label>
-        <input type="number" id="qtyInput" value="1" min="1" />
-      </div>
-      <div class="field">
-        <label>&nbsp;</label>
-        <button class="btn-dark" onclick="handleScan()">Add</button>
-      </div>
+      <button class="btn-dark" onclick="handleScan()" style="width:100%;font-size:16px;padding:14px;">＋ Add Item</button>
     </div>
     <div id="itemPreview"></div>
   </div>
