@@ -73,36 +73,50 @@ async function lwApi(endpoint, body = {}) {
 }
 
 // ─── GET /api/debug?sku=XXX ───────────────────────────────────────────────────
-// Shows raw Linnworks API response for debugging
 app.get('/api/debug', async (req, res) => {
   const sku = (req.query.sku || 'test').trim();
   try {
     const s = await getSession();
     const results = {};
+    const headers_form = { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token };
+    const headers_json = { 'Content-Type': 'application/json', 'Authorization': s.token };
 
-    // Try GetStockItems
-    try {
-      const url = `${s.server}/api/Stock/GetStockItems`;
-      const body = new URLSearchParams({ keyword: sku, entriesPerPage: '5', startIndex: '0' });
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
-        body: body.toString()
-      });
-      results.GetStockItems = { status: r.status, body: await r.json().catch(() => r.text()) };
-    } catch (e) { results.GetStockItems = { error: e.message }; }
-
-    // Try GetStockItemsFull with no extra params
+    // Test 1: GetStockItemsFull as JSON body
     try {
       const url = `${s.server}/api/Stock/GetStockItemsFull`;
-      const body = new URLSearchParams({ keyword: sku, loadCompositeParents: 'false', loadVariationParents: 'false', entriesPerPage: '5', startIndex: '0' });
       const r = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
-        body: body.toString()
+        headers: headers_json,
+        body: JSON.stringify({ keyword: sku, loadCompositeParents: false, loadVariationParents: false, entriesPerPage: 5, startIndex: 0, dataRequirements: [0, 1], searchTypes: [0] })
       });
-      results.GetStockItemsFull = { status: r.status, body: await r.json().catch(() => r.text()) };
-    } catch (e) { results.GetStockItemsFull = { error: e.message }; }
+      results.GetStockItemsFull_json = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.GetStockItemsFull_json = { error: e.message }; }
+
+    // Test 2: GetStockItems as JSON body
+    try {
+      const url = `${s.server}/api/Stock/GetStockItems`;
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: headers_json,
+        body: JSON.stringify({ keyword: sku, entriesPerPage: 5, startIndex: 0 })
+      });
+      results.GetStockItems_json = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.GetStockItems_json = { error: e.message }; }
+
+    // Test 3: GetStockItemsFull form with dataRequirements as repeated params
+    try {
+      const url = `${s.server}/api/Stock/GetStockItemsFull`;
+      const body = 'keyword=' + encodeURIComponent(sku) + '&loadCompositeParents=false&loadVariationParents=false&entriesPerPage=5&startIndex=0&dataRequirements=0&dataRequirements=1&searchTypes=0';
+      const r = await fetch(url, { method: 'POST', headers: headers_form, body });
+      results.GetStockItemsFull_repeated = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.GetStockItemsFull_repeated = { error: e.message }; }
+
+    // Test 4: GetStockItems as query string GET
+    try {
+      const url = `${s.server}/api/Stock/GetStockItems?keyword=${encodeURIComponent(sku)}&entriesPerPage=5&startIndex=0`;
+      const r = await fetch(url, { method: 'GET', headers: { 'Authorization': s.token } });
+      results.GetStockItems_get = { status: r.status, body: await r.json().catch(async () => await r.text()) };
+    } catch (e) { results.GetStockItems_get = { error: e.message }; }
 
     res.json({ server: s.server, results });
   } catch (e) {
