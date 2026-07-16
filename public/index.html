@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="screen-orientation" content="portrait">
 <style>
+  body.rotated-180 {
+    transform: rotate(180deg);
+    transform-origin: center center;
+  }
   @media screen and (orientation: landscape) {
     body::before {
       content: 'Please rotate your device to portrait mode';
@@ -16,22 +20,6 @@
     body > * { display: none !important; }
   }
 </style>
-<script>
-  // Lock to portrait-primary (upright) as soon as possible — prevents 180° flip too
-  (function() {
-    try {
-      if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('portrait-primary').catch(() => {});
-      } else if (window.screen.lockOrientation) {
-        window.screen.lockOrientation('portrait-primary');
-      } else if (window.screen.mozLockOrientation) {
-        window.screen.mozLockOrientation('portrait-primary');
-      } else if (window.screen.msLockOrientation) {
-        window.screen.msLockOrientation('portrait-primary');
-      }
-    } catch(e) {}
-  })();
-</script>
 <title>Linnworks Transfer</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1107,16 +1095,20 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-// Re-lock orientation after first user interaction (required on some Android browsers)
-function lockPortrait() {
-  try {
-    if (screen.orientation && screen.orientation.lock) {
-      screen.orientation.lock('portrait-primary').catch(() => {});
-    }
-  } catch(e) {}
+// Counter-rotate page when device is flipped 180° upside down
+function checkOrientation() {
+  const angle = (screen.orientation && screen.orientation.angle != null)
+    ? screen.orientation.angle
+    : (window.orientation || 0);
+  if (angle === 180 || angle === -180) {
+    document.body.classList.add('rotated-180');
+  } else {
+    document.body.classList.remove('rotated-180');
+  }
 }
-document.addEventListener('touchstart', lockPortrait, { once: true });
-document.addEventListener('click', lockPortrait, { once: true });
+checkOrientation();
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 100));
+if (screen.orientation) screen.orientation.addEventListener('change', checkOrientation);
 
 function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
