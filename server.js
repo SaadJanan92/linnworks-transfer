@@ -72,6 +72,44 @@ async function lwApi(endpoint, body = {}) {
   return res.json();
 }
 
+// ─── GET /api/debug?sku=XXX ───────────────────────────────────────────────────
+// Shows raw Linnworks API response for debugging
+app.get('/api/debug', async (req, res) => {
+  const sku = (req.query.sku || 'test').trim();
+  try {
+    const s = await getSession();
+    const results = {};
+
+    // Try GetStockItems
+    try {
+      const url = `${s.server}/api/Stock/GetStockItems`;
+      const body = new URLSearchParams({ keyword: sku, entriesPerPage: '5', startIndex: '0' });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
+        body: body.toString()
+      });
+      results.GetStockItems = { status: r.status, body: await r.json().catch(() => r.text()) };
+    } catch (e) { results.GetStockItems = { error: e.message }; }
+
+    // Try GetStockItemsFull with no extra params
+    try {
+      const url = `${s.server}/api/Stock/GetStockItemsFull`;
+      const body = new URLSearchParams({ keyword: sku, loadCompositeParents: 'false', loadVariationParents: 'false', entriesPerPage: '5', startIndex: '0' });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
+        body: body.toString()
+      });
+      results.GetStockItemsFull = { status: r.status, body: await r.json().catch(() => r.text()) };
+    } catch (e) { results.GetStockItemsFull = { error: e.message }; }
+
+    res.json({ server: s.server, results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── GET /api/health ──────────────────────────────────────────────────────────
 app.get('/api/health', async (req, res) => {
   try {
