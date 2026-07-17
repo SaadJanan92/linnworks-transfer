@@ -98,7 +98,7 @@ app.post('/api/login', (req, res) => {
   };
   activeSessions.set(token, sessionData);
   // Save to MongoDB async (don't await)
-  sessionsCol.updateOne({ token }, { $set: { token, ...sessionData } }, { upsert: true }).catch(() => {});
+  if (sessionsCol) sessionsCol.updateOne({ token }, { $set: { token, ...sessionData } }, { upsert: true }).catch(() => {});
 
   res.json({ token, displayName: user.displayName || username });
 });
@@ -119,7 +119,7 @@ app.post('/api/logout', (req, res) => {
   const token = req.headers['x-auth-token'];
   if (token) {
     activeSessions.delete(token);
-    sessionsCol.deleteOne({ token }).catch(() => {});
+    if (sessionsCol) sessionsCol.deleteOne({ token }).catch(() => {});
   }
   res.json({ ok: true });
 });
