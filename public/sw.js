@@ -1,5 +1,5 @@
 // Service Worker — caches the app shell for offline/fast loading
-const CACHE = 'lw-transfer-v7';
+const CACHE = 'lw-transfer-v9';
 const SHELL = ['/', '/manifest.json'];
 
 self.addEventListener('install', e => {
