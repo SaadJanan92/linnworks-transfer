@@ -3,7 +3,7 @@ const fetch = require('node-fetch');
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
-const fs = require('fs');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,44 +12,56 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── Linnworks credentials (set as env vars in Render) ───────────────────────
+// ─── Linnworks credentials ────────────────────────────────────────────────────
 const APP_ID = process.env.LINNWORKS_APP_ID;
 const APP_SECRET = process.env.LINNWORKS_APP_SECRET;
 const APP_TOKEN = process.env.LINNWORKS_TOKEN;
 
-// ─── Transfer log ─────────────────────────────────────────────────────────────
-const LOG_FILE = '/tmp/transfer-log.json';
-const SESSION_FILE = '/tmp/sessions.json';
+// ─── MongoDB ──────────────────────────────────────────────────────────────────
+const mongoClient = new MongoClient(process.env.MONGODB_URI);
+let db, logsCol, sessionsCol;
 
-function readLog() {
-  try { return JSON.parse(fs.readFileSync(LOG_FILE, 'utf8')); } catch (_) { return []; }
-}
-function appendLog(entry) {
-  const log = readLog();
-  log.unshift(entry);
-  if (log.length > 50000) log.length = 50000;
-  try { fs.writeFileSync(LOG_FILE, JSON.stringify(log)); } catch (_) {}
+async function connectDB() {
+  await mongoClient.connect();
+  db = mongoClient.db('linnworks');
+  logsCol = db.collection('transfer_logs');
+  sessionsCol = db.collection('sessions');
+  // Index for fast date queries and auto-expiry of sessions
+  await logsCol.createIndex({ timestamp: -1 });
+  await sessionsCol.createIndex({ expiry: 1 }, { expireAfterSeconds: 0 });
+  console.log('✅ MongoDB connected');
 }
 
-// ─── Staff session store — persisted to file so restarts don't log everyone out
-const activeSessions = new Map();
-
-function saveSessions() {
-  const obj = {};
-  for (const [k, v] of activeSessions) obj[k] = v;
-  try { fs.writeFileSync(SESSION_FILE, JSON.stringify(obj)); } catch (_) {}
+async function appendLog(entry) {
+  try { await logsCol.insertOne(entry); } catch (e) { console.error('Log error:', e.message); }
 }
-function loadSessions() {
+
+async function readLog(limit = 50000) {
   try {
-    const obj = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
-    const now = Date.now();
-    for (const [k, v] of Object.entries(obj)) {
-      if (v.expiry > now) activeSessions.set(k, v); // only load non-expired
+    return await logsCol.find({}, { projection: { _id: 0 } })
+      .sort({ timestamp: -1 }).limit(limit).toArray();
+  } catch (_) { return []; }
+}
+
+// ─── Staff session store — persisted in MongoDB so restarts don't log out ────
+const activeSessions = new Map(); // in-memory cache
+
+async function saveSessions() {
+  for (const [token, session] of activeSessions) {
+    await sessionsCol.updateOne({ token }, { $set: { token, ...session } }, { upsert: true });
+  }
+}
+
+async function loadSessions() {
+  try {
+    const now = new Date();
+    const docs = await sessionsCol.find({ expiry: { $gt: Date.now() } }).toArray();
+    for (const doc of docs) {
+      activeSessions.set(doc.token, { username: doc.username, displayName: doc.displayName, expiry: doc.expiry });
     }
-    console.log(`Loaded ${activeSessions.size} active sessions from disk`);
+    console.log(`Loaded ${activeSessions.size} active sessions from MongoDB`);
   } catch (_) {}
 }
-loadSessions(); // restore sessions on startup
 
 // ─── POST /api/login ──────────────────────────────────────────────────────────
 // Validates against STAFF_USERS env var set in Render
@@ -71,12 +83,14 @@ app.post('/api/login', (req, res) => {
   }
 
   const token = crypto.randomBytes(32).toString('hex');
-  activeSessions.set(token, {
+  const sessionData = {
     username: username.toLowerCase(),
     displayName: user.displayName || username,
-    expiry: Date.now() + 8 * 60 * 60 * 1000 // 8 hours
-  });
-  saveSessions();
+    expiry: Date.now() + 8 * 60 * 60 * 1000
+  };
+  activeSessions.set(token, sessionData);
+  // Save to MongoDB async (don't await)
+  sessionsCol.updateOne({ token }, { $set: { token, ...sessionData } }, { upsert: true }).catch(() => {});
 
   res.json({ token, displayName: user.displayName || username });
 });
@@ -95,15 +109,17 @@ function requireAuth(req, res, next) {
 // ─── POST /api/logout ────────────────────────────────────────────────────────
 app.post('/api/logout', (req, res) => {
   const token = req.headers['x-auth-token'];
-  if (token) activeSessions.delete(token);
-  saveSessions();
+  if (token) {
+    activeSessions.delete(token);
+    sessionsCol.deleteOne({ token }).catch(() => {});
+  }
   res.json({ ok: true });
 });
 
 // ─── GET /api/logs ────────────────────────────────────────────────────────────
-app.get('/api/logs', requireAuth, (req, res) => {
+app.get('/api/logs', requireAuth, async (req, res) => {
   const limit = parseInt(req.query.limit) || 50000;
-  const log = readLog().slice(0, limit);
+  const log = await readLog(limit);
   res.json(log);
 });
 
@@ -493,13 +509,16 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Linnworks Transfer app running on port ${PORT}`);
-  if (!APP_ID || !APP_SECRET || !APP_TOKEN) {
-    console.warn('⚠️ Missing env vars: LINNWORKS_APP_ID, LINNWORKS_APP_SECRET, LINNWORKS_TOKEN');
-  }
-  if (!process.env.STAFF_USERS) {
-    console.warn('⚠️ STAFF_USERS env var not set — no one will be able to log in');
-    console.warn('   Set it to JSON like: {"ali":{"password":"1234","displayName":"Ali Khan"}}');
-  }
+// ─── Start server after MongoDB connects ──────────────────────────────────────
+connectDB().then(async () => {
+  await loadSessions();
+  app.listen(PORT, () => {
+    console.log(`🚀 Linnworks Transfer app running on port ${PORT}`);
+    if (!APP_ID || !APP_SECRET || !APP_TOKEN) {
+      console.warn('⚠️ Missing env vars: LINNWORKS_APP_ID, LINNWORKS_APP_SECRET, LINNWORKS_TOKEN');
+    }
+  });
+}).catch(err => {
+  console.error('❌ Failed to connect to MongoDB:', err.message);
+  process.exit(1);
 });
