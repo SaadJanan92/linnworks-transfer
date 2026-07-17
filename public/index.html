@@ -1059,19 +1059,19 @@ async function confirmTransfer() {
 
   // Single batch call — bin racks looked up once, all moves in parallel
   try {
-    const locationId = pending[0].locationId;
+    const locationId = document.getElementById('locationSelect').value;
     const result = await api('/api/transfer-batch', 'POST', {
       fromBinRack: from,
       toBinRack: to,
       locationId,
       transferId,
-      items: pending.map(i => ({ stockItemId: i.stockItemId, qty: i.qty, sku: i.sku, title: i.title }))
+      items: pending.map((i, idx) => ({ idx, stockItemId: i.stockItemId, qty: i.qty, sku: i.sku, title: i.title }))
     });
-    // Map results back to items
-    for (const item of pending) {
-      const r = (result.results || []).find(r => r.sku === item.sku);
-      if (r && r.success) { item.status = 'success'; }
-      else { item.status = 'error'; item.error = (r && r.error) || 'Failed'; }
+    // Map results back to items by index
+    for (let i = 0; i < pending.length; i++) {
+      const r = (result.results || []).find(r => r.idx === i);
+      if (r && r.success) { pending[i].status = 'success'; }
+      else { pending[i].status = 'error'; pending[i].error = (r && r.error) || 'Failed'; }
     }
   } catch (e) {
     pending.forEach(item => { item.status = 'error'; item.error = e.message; });
