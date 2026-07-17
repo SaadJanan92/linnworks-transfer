@@ -18,7 +18,13 @@ const APP_SECRET = process.env.LINNWORKS_APP_SECRET;
 const APP_TOKEN = process.env.LINNWORKS_TOKEN;
 
 // ─── MongoDB ──────────────────────────────────────────────────────────────────
-const mongoClient = new MongoClient(process.env.MONGODB_URI);
+const mongoClient = new MongoClient(process.env.MONGODB_URI, {
+  serverSelectionTimeoutMS: 10000,
+  connectTimeoutMS: 10000,
+  tls: true,
+  tlsAllowInvalidCertificates: false,
+  family: 4
+});
 let db, logsCol, sessionsCol;
 
 async function connectDB() {
@@ -33,10 +39,12 @@ async function connectDB() {
 }
 
 async function appendLog(entry) {
+  if (!logsCol) return;
   try { await logsCol.insertOne(entry); } catch (e) { console.error('Log error:', e.message); }
 }
 
 async function readLog(limit = 50000) {
+  if (!logsCol) return [];
   try {
     return await logsCol.find({}, { projection: { _id: 0 } })
       .sort({ timestamp: -1 }).limit(limit).toArray();
@@ -509,16 +517,16 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ─── Start server after MongoDB connects ──────────────────────────────────────
-connectDB().then(async () => {
-  await loadSessions();
+// ─── Start server (MongoDB optional — app still works without it) ─────────────
+async function start() {
+  try {
+    await connectDB();
+    await loadSessions();
+  } catch (err) {
+    console.error('⚠️ MongoDB unavailable, running without persistent logs:', err.message);
+  }
   app.listen(PORT, () => {
     console.log(`🚀 Linnworks Transfer app running on port ${PORT}`);
-    if (!APP_ID || !APP_SECRET || !APP_TOKEN) {
-      console.warn('⚠️ Missing env vars: LINNWORKS_APP_ID, LINNWORKS_APP_SECRET, LINNWORKS_TOKEN');
-    }
   });
-}).catch(err => {
-  console.error('❌ Failed to connect to MongoDB:', err.message);
-  process.exit(1);
-});
+}
+start();
