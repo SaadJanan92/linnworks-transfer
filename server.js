@@ -3,7 +3,6 @@ const fetch = require('node-fetch');
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
-const { MongoClient } = require('mongodb');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,58 +16,57 @@ const APP_ID = process.env.LINNWORKS_APP_ID;
 const APP_SECRET = process.env.LINNWORKS_APP_SECRET;
 const APP_TOKEN = process.env.LINNWORKS_TOKEN;
 
-// ─── MongoDB ──────────────────────────────────────────────────────────────────
-const mongoClient = new MongoClient(process.env.MONGODB_URI, {
-  serverSelectionTimeoutMS: 10000,
-  connectTimeoutMS: 10000,
-  tls: true,
-  tlsAllowInvalidCertificates: false,
-  family: 4
-});
-let db, logsCol, sessionsCol;
+// ─── Upstash Redis (persistent storage via simple HTTP) ───────────────────────
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-async function connectDB() {
-  await mongoClient.connect();
-  db = mongoClient.db('linnworks');
-  logsCol = db.collection('transfer_logs');
-  sessionsCol = db.collection('sessions');
-  // Index for fast date queries and auto-expiry of sessions
-  await logsCol.createIndex({ timestamp: -1 });
-  await sessionsCol.createIndex({ expiry: 1 }, { expireAfterSeconds: 0 });
-  console.log('✅ MongoDB connected');
-}
-
-async function appendLog(entry) {
-  if (!logsCol) return;
-  try { await logsCol.insertOne(entry); } catch (e) { console.error('Log error:', e.message); }
-}
-
-async function readLog(limit = 50000) {
-  if (!logsCol) return [];
+async function redis(...args) {
   try {
-    return await logsCol.find({}, { projection: { _id: 0 } })
-      .sort({ timestamp: -1 }).limit(limit).toArray();
-  } catch (_) { return []; }
-}
-
-// ─── Staff session store — persisted in MongoDB so restarts don't log out ────
-const activeSessions = new Map(); // in-memory cache
-
-async function saveSessions() {
-  for (const [token, session] of activeSessions) {
-    await sessionsCol.updateOne({ token }, { $set: { token, ...session } }, { upsert: true });
+    const res = await fetch(`${REDIS_URL}/${args.map(a => encodeURIComponent(a)).join('/')}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
+    });
+    const data = await res.json();
+    return data.result;
+  } catch (e) {
+    console.error('Redis error:', e.message);
+    return null;
   }
 }
 
-async function loadSessions() {
+async function appendLog(entry) {
+  if (!REDIS_URL) return;
   try {
-    const now = new Date();
-    const docs = await sessionsCol.find({ expiry: { $gt: Date.now() } }).toArray();
-    for (const doc of docs) {
-      activeSessions.set(doc.token, { username: doc.username, displayName: doc.displayName, expiry: doc.expiry });
-    }
-    console.log(`Loaded ${activeSessions.size} active sessions from MongoDB`);
-  } catch (_) {}
+    await redis('lpush', 'transfer_logs', JSON.stringify(entry));
+    await redis('ltrim', 'transfer_logs', '0', '49999'); // keep max 50k
+  } catch (e) { console.error('Log error:', e.message); }
+}
+
+async function readLog(limit = 50000) {
+  if (!REDIS_URL) return [];
+  try {
+    const items = await redis('lrange', 'transfer_logs', '0', String(limit - 1));
+    if (!Array.isArray(items)) return [];
+    return items.map(i => { try { return JSON.parse(i); } catch(_) { return null; } }).filter(Boolean);
+  } catch (_) { return []; }
+}
+
+// ─── Staff session store — persisted in Redis so restarts don't log out ───────
+const activeSessions = new Map();
+
+async function saveSession(token, sessionData) {
+  if (!REDIS_URL) return;
+  const ttl = Math.floor((sessionData.expiry - Date.now()) / 1000);
+  if (ttl > 0) await redis('set', `session:${token}`, JSON.stringify(sessionData), 'ex', String(ttl));
+}
+
+async function deleteSession(token) {
+  if (!REDIS_URL) return;
+  await redis('del', `session:${token}`);
+}
+
+async function loadSessions() {
+  // Sessions are loaded on-demand from Redis in requireAuth
+  console.log('✅ Upstash Redis ready');
 }
 
 // ─── POST /api/login ──────────────────────────────────────────────────────────
@@ -97,16 +95,34 @@ app.post('/api/login', (req, res) => {
     expiry: Date.now() + 8 * 60 * 60 * 1000
   };
   activeSessions.set(token, sessionData);
-  // Save to MongoDB async (don't await)
-  if (sessionsCol) sessionsCol.updateOne({ token }, { $set: { token, ...sessionData } }, { upsert: true }).catch(() => {});
+  saveSession(token, sessionData); // persist to Redis
 
   res.json({ token, displayName: user.displayName || username });
 });
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const token = req.headers['x-auth-token'];
-  const session = token && activeSessions.get(token);
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+  // Check memory first
+  let session = activeSessions.get(token);
+
+  // If not in memory, check Redis (e.g. after server restart)
+  if (!session && REDIS_URL) {
+    try {
+      const raw = await redis('get', `session:${token}`);
+      if (raw) {
+        session = JSON.parse(raw);
+        if (Date.now() < session.expiry) {
+          activeSessions.set(token, session); // cache in memory
+        } else {
+          session = null;
+        }
+      }
+    } catch (_) {}
+  }
+
   if (!session || Date.now() > session.expiry) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
@@ -119,7 +135,7 @@ app.post('/api/logout', (req, res) => {
   const token = req.headers['x-auth-token'];
   if (token) {
     activeSessions.delete(token);
-    if (sessionsCol) sessionsCol.deleteOne({ token }).catch(() => {});
+    deleteSession(token);
   }
   res.json({ ok: true });
 });
@@ -517,16 +533,8 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ─── Start server (MongoDB optional — app still works without it) ─────────────
-async function start() {
-  try {
-    await connectDB();
-    await loadSessions();
-  } catch (err) {
-    console.error('⚠️ MongoDB unavailable, running without persistent logs:', err.message);
-  }
-  app.listen(PORT, () => {
-    console.log(`🚀 Linnworks Transfer app running on port ${PORT}`);
-  });
-}
-start();
+// ─── Start server ─────────────────────────────────────────────────────────────
+loadSessions();
+app.listen(PORT, () => {
+  console.log(`🚀 Linnworks Transfer app running on port ${PORT}`);
+});
