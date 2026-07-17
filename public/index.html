@@ -1028,9 +1028,12 @@ async function confirmTransfer() {
   document.getElementById('sumTo').textContent = to;
   document.getElementById('transferBtn').disabled = true;
 
-  for (const item of pending) {
-    item.status = 'sending';
-    renderList();
+  // Set all to sending at once
+  pending.forEach(item => { item.status = 'sending'; });
+  renderList();
+
+  // Fire all transfers in parallel
+  await Promise.all(pending.map(async item => {
     try {
       await api('/api/transfer', 'POST', {
         stockItemId: item.stockItemId,
@@ -1048,8 +1051,8 @@ async function confirmTransfer() {
       item.status = 'error';
       item.error = e.message;
     }
-    renderList();
-  }
+  }));
+  renderList();
 
   document.getElementById('transferBtn').disabled = false;
   const done = items.filter(i => i.status === 'success').length;
