@@ -418,7 +418,7 @@ tr:hover td { background: #fafbff; }
       <div class="scan-row-inputs">
         <div class="field">
           <label>SKU / Barcode</label>
-          <input type="text" id="skuInput" placeholder="Scan barcode…" autocomplete="off" />
+          <input type="text" id="skuInput" placeholder="Scan barcode…" autocomplete="off" inputmode="none" />
         </div>
         <div class="field">
           <label>Qty</label>
@@ -798,7 +798,7 @@ document.getElementById('fromBin').addEventListener('keydown', async e => {
     } catch (_) {
       toast('Could not load bin rack — scanning without validation', '');
     }
-    document.getElementById('skuInput').focus();
+    // no auto-focus — prevents soft keyboard popping up on Zebra
   }
 });
 document.getElementById('skuInput').addEventListener('keydown', e => {
@@ -880,7 +880,7 @@ async function handleScan() {
         <div style="font-size:12px;color:#888;margin-top:4px;">Currently in: <strong>${esc(firstLevel.binRack)}</strong></div>`;
       document.getElementById('skuInput').value = '';
       document.getElementById('qtyInput').value = 1;
-      document.getElementById('skuInput').focus();
+      // no auto-focus — prevents soft keyboard popping up on Zebra
       return;
     }
 
@@ -900,7 +900,7 @@ async function handleScan() {
         <div class="item-sku">${esc(item.title)}</div>
         <div style="font-size:12px;color:#888;margin-top:4px;">Check the correct bin rack for this item</div>`;
       document.getElementById('skuInput').value = '';
-      document.getElementById('skuInput').focus();
+      // no auto-focus — prevents soft keyboard popping up on Zebra
       return;
     }
 
@@ -938,7 +938,7 @@ async function handleScan() {
 
     document.getElementById('skuInput').value = '';
     document.getElementById('qtyInput').value = 1;
-    document.getElementById('skuInput').focus();
+    // no auto-focus — prevents soft keyboard popping up on Zebra
     renderList();
     saveState();
 
@@ -1068,7 +1068,7 @@ async function confirmTransfer() {
       document.getElementById('skuInput').value = '';
       document.getElementById('qtyInput').value = 1;
       renderList();
-      document.getElementById('skuInput').focus();
+      // no auto-focus — prevents soft keyboard popping up on Zebra
     }, 1500);
   } else {
     toast(`${done} done, ${failed} failed`, 'err');
