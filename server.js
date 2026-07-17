@@ -418,6 +418,76 @@ app.post('/api/transfer', requireAuth, async (req, res) => {
   }
 });
 
+// ─── POST /api/transfer-batch ─────────────────────────────────────────────────
+// Body: { fromBinRack, toBinRack, locationId, transferId, items: [{stockItemId, qty, sku, title}] }
+// Looks up bin racks ONCE, gets all skus ONCE, then moves all items in parallel
+app.post('/api/transfer-batch', requireAuth, async (req, res) => {
+  const { fromBinRack, toBinRack, locationId, transferId, items } = req.body;
+  if (!fromBinRack || !toBinRack || !locationId || !items || !items.length) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    // ── Step 1: Look up source + destination bin racks ONCE ───────────────────
+    const [srcRes, dstRes] = await Promise.all([
+      lwPost('Stock/SearchBinracks', `request=${encodeURIComponent(JSON.stringify({ BinRack: fromBinRack, LocationId: locationId, StockItemId: '00000000-0000-0000-0000-000000000000', PageNumber: 1 }))}`),
+      lwPost('Stock/SearchBinracks', `request=${encodeURIComponent(JSON.stringify({ BinRack: toBinRack, LocationId: locationId, StockItemId: '00000000-0000-0000-0000-000000000000', PageNumber: 1 }))}`),
+    ]);
+
+    const srcBinRack = (srcRes.BinRacks || []).find(b => b.BinRack === fromBinRack) || (srcRes.BinRacks || [])[0];
+    const dstBinRack = (dstRes.BinRacks || []).find(b => b.BinRack === toBinRack) || (dstRes.BinRacks || [])[0];
+    if (!srcBinRack) return res.status(404).json({ error: `Source bin rack "${fromBinRack}" not found` });
+    if (!dstBinRack) return res.status(404).json({ error: `Destination bin rack "${toBinRack}" not found` });
+
+    const srcId = srcBinRack.BinRackId;
+    const dstId = dstBinRack.BinRackId;
+
+    // ── Step 2: Get all SKUs in source bin rack ONCE ──────────────────────────
+    const skuRes = await lwPost('Stock/GetBinrackSkus', `request=${encodeURIComponent(JSON.stringify({ BinRackId: srcId, DetailLevel: [] }))}`);
+    const skus = skuRes.Skus || [];
+
+    // Build map: stockItemId → batchInventoryId
+    const batchMap = {};
+    for (const batch of skus) {
+      const id = String(batch.StockItemId).toLowerCase();
+      for (const inv of (batch.Inventory || [])) {
+        if (!inv.IsDeleted && inv.BinRackId === srcId) {
+          batchMap[id] = inv.BatchInventoryId;
+          break;
+        }
+      }
+    }
+
+    const staffName = req.user ? req.user.displayName : 'Unknown';
+
+    // ── Step 3: Move all items in parallel ────────────────────────────────────
+    const results = await Promise.all(items.map(async item => {
+      const batchInventoryId = batchMap[String(item.stockItemId).toLowerCase()];
+      if (!batchInventoryId) return { idx: item.idx, sku: item.sku, success: false, error: `Not found in bin rack "${fromBinRack}"` };
+
+      try {
+        const moveRes = await lwPost('Stock/CreateWarehouseMove',
+          `request=${encodeURIComponent(JSON.stringify({ BatchInventoryId: batchInventoryId, BinrackIdDestination: dstId, Quantity: item.qty, TxType: 'InTransit' }))}`
+        );
+        const moveId = moveRes.WarehouseMove && moveRes.WarehouseMove.MoveId;
+        if (moveId) {
+          await lwPost('Stock/CompleteWarehouseMove', `request=${encodeURIComponent(JSON.stringify({ MoveId: moveId }))}`).catch(() =>
+            lwPost('Stock/CompleteWarehouseMove', `request=${encodeURIComponent(JSON.stringify({ WarehouseMoveId: moveId }))}`)
+          );
+        }
+        appendLog({ timestamp: new Date().toISOString(), user: staffName, transferId: transferId || null, fromBinRack, toBinRack, qty: item.qty, sku: item.sku, title: item.title, moveId: moveId || null });
+        return { idx: item.idx, sku: item.sku, success: true };
+      } catch (e) {
+        return { idx: item.idx, sku: item.sku, success: false, error: e.message };
+      }
+    }));
+
+    res.json({ results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Serve frontend ───────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
