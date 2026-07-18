@@ -476,12 +476,18 @@ tr:hover td { background: #fafbff; }
         <button onclick="closeHistory()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;padding:0;">✕</button>
       </div>
     </div>
-    <div style="padding:12px 16px;border-bottom:1px solid #f0f2f5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <input type="date" id="historyFrom" style="padding:6px 10px;border:1px solid #e0e4ef;border-radius:6px;font-size:13px;font-family:inherit;flex:1;" />
-      <span style="color:#aaa;font-size:13px;">to</span>
-      <input type="date" id="historyTo" style="padding:6px 10px;border:1px solid #e0e4ef;border-radius:6px;font-size:13px;font-family:inherit;flex:1;" />
-      <button onclick="showHistory()" style="background:#1a1a2e;color:white;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Filter</button>
-      <button onclick="document.getElementById('historyFrom').value='';document.getElementById('historyTo').value='';showHistory();" style="background:#f0f2f5;color:#555;border:none;border-radius:6px;padding:6px 10px;font-size:13px;cursor:pointer;font-family:inherit;">Clear</button>
+    <div style="padding:12px 16px;border-bottom:1px solid #f0f2f5;display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="date" id="historyFrom" style="padding:6px 10px;border:1px solid #e0e4ef;border-radius:6px;font-size:13px;font-family:inherit;flex:1;" />
+        <span style="color:#aaa;font-size:13px;">to</span>
+        <input type="date" id="historyTo" style="padding:6px 10px;border:1px solid #e0e4ef;border-radius:6px;font-size:13px;font-family:inherit;flex:1;" />
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="historySkuFilter" placeholder="Search SKU or product name…" autocomplete="off"
+          style="padding:6px 10px;border:1px solid #e0e4ef;border-radius:6px;font-size:13px;font-family:inherit;flex:1;outline:none;" />
+        <button onclick="showHistory()" style="background:#1a1a2e;color:white;border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Filter</button>
+        <button onclick="clearHistoryFilters()" style="background:#f0f2f5;color:#555;border:none;border-radius:6px;padding:6px 10px;font-size:13px;cursor:pointer;font-family:inherit;">Clear</button>
+      </div>
     </div>
     <div id="historyBody" style="padding:12px 16px;max-height:60vh;overflow-y:auto;"></div>
   </div>
@@ -514,6 +520,15 @@ async function showHistory() {
       const toDate = new Date(toVal);
       toDate.setHours(23, 59, 59, 999);
       logs = logs.filter(e => new Date(e.timestamp) <= toDate);
+    }
+
+    // SKU / product name filter
+    const skuFilter = (document.getElementById('historySkuFilter').value || '').trim().toLowerCase();
+    if (skuFilter) {
+      logs = logs.filter(e =>
+        (e.sku || '').toLowerCase().includes(skuFilter) ||
+        (e.title || '').toLowerCase().includes(skuFilter)
+      );
     }
 
     if (!logs.length) {
@@ -587,6 +602,13 @@ function closeHistory() {
   document.getElementById('historyModal').style.display = 'none';
 }
 
+function clearHistoryFilters() {
+  document.getElementById('historyFrom').value = '';
+  document.getElementById('historyTo').value = '';
+  document.getElementById('historySkuFilter').value = '';
+  showHistory();
+}
+
 async function exportCSV() {
   try {
     let logs = await api('/api/logs?limit=50000');
@@ -594,6 +616,8 @@ async function exportCSV() {
     const toVal = document.getElementById('historyTo').value;
     if (fromVal) { const d = new Date(fromVal); logs = logs.filter(e => new Date(e.timestamp) >= d); }
     if (toVal) { const d = new Date(toVal); d.setHours(23,59,59,999); logs = logs.filter(e => new Date(e.timestamp) <= d); }
+    const sf = (document.getElementById('historySkuFilter').value || '').trim().toLowerCase();
+    if (sf) logs = logs.filter(e => (e.sku||'').toLowerCase().includes(sf) || (e.title||'').toLowerCase().includes(sf));
     if (!logs.length) { toast('No history to export', 'err'); return; }
 
     const rows = [['Date', 'Time', 'User', 'SKU', 'Item Title', 'Qty', 'From Bin Rack', 'To Bin Rack']];
