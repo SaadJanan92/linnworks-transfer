@@ -523,23 +523,47 @@ res.status(500).json({ error: e.message });
 });
 
 // ─── POST /api/count-adjust ───────────────────────────────────────────────────
-// Called by the Stock Count tab to adjust stock level by a delta
 app.post('/api/count-adjust', requireAuth, async (req, res) => {
-	const { stockItemId, locationId, changeInQty, sku } = req.body;
+	const { stockItemId, locationId, changeInQty, sku, title } = req.body;
 	if (!stockItemId || !locationId || changeInQty === undefined) {
 		return res.status(400).json({ error: 'stockItemId, locationId and changeInQty required' });
 	}
 	const staffName = req.user ? req.user.displayName : 'Unknown';
 	const notes = `Stock Count by ${staffName}`;
 	try {
-		await lwPost('Inventory/AdjustStockLevel',
-			`stockItemId=${encodeURIComponent(stockItemId)}&changeInQty=${changeInQty}&locationId=${encodeURIComponent(locationId)}&notes=${encodeURIComponent(notes)}`
-		);
+		const s = await getSession();
+		// Use raw fetch so we don't crash on empty response body (Linnworks returns 200 with no body on success)
+		const r = await fetch(`${s.server}/api/Inventory/AdjustStockLevel`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
+			body: `stockItemId=${encodeURIComponent(stockItemId)}&changeInQty=${changeInQty}&locationId=${encodeURIComponent(locationId)}&notes=${encodeURIComponent(notes)}`
+		});
+		if (!r.ok) {
+			const txt = await r.text();
+			throw new Error(`AdjustStockLevel failed: ${r.status} ${txt}`);
+		}
 		console.log(`[Stock Count] ${staffName} | ${sku} | ${changeInQty > 0 ? '+' : ''}${changeInQty}`);
+		// Log to Redis
+		appendLog({
+			type: 'count',
+			timestamp: new Date().toISOString(),
+			user: staffName,
+			sku: sku || stockItemId,
+			title: title || '',
+			changeInQty,
+			locationId
+		});
 		res.json({ success: true });
 	} catch (e) {
 		res.status(500).json({ error: e.message });
 	}
+});
+
+// ─── GET /api/count-logs ──────────────────────────────────────────────────────
+app.get('/api/count-logs', requireAuth, async (req, res) => {
+	const limit = parseInt(req.query.limit) || 10000;
+	const all = await readLog(limit);
+	res.json(all.filter(e => e.type === 'count'));
 });
 
 // ─── Serve frontend ───────────────────────────────────────────────────────────
