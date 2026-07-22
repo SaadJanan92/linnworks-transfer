@@ -530,30 +530,37 @@ app.post('/api/count-adjust', requireAuth, async (req, res) => {
 	}
 	const staffName = req.user ? req.user.displayName : 'Unknown';
 	const notes = `Stock Count by ${staffName}`;
+
+	// Try endpoints in order — Inventory/AdjustStockLevel doesn't exist on all
+	// Linnworks servers; Stock/AdjustStockLevel is the WMS equivalent.
+	const attempts = [
+		{ ep: 'Stock/AdjustStockLevel',     body: `request=${encodeURIComponent(JSON.stringify({ StockItemId: stockItemId, ChangeInQty: changeInQty, LocationId: locationId, Notes: notes }))}` },
+		{ ep: 'Inventory/AdjustStockLevel', body: `stockItemId=${encodeURIComponent(stockItemId)}&changeInQty=${changeInQty}&locationId=${encodeURIComponent(locationId)}&notes=${encodeURIComponent(notes)}` },
+		{ ep: 'Inventory/AdjustStockLevel', body: `StockItemId=${encodeURIComponent(stockItemId)}&ChangeInQty=${changeInQty}&LocationId=${encodeURIComponent(locationId)}&Notes=${encodeURIComponent(notes)}` },
+	];
+
 	try {
 		const s = await getSession();
-		// Use raw fetch so we don't crash on empty response body (Linnworks returns 200 with no body on success)
-		const r = await fetch(`${s.server}/api/Inventory/AdjustStockLevel`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
-			body: `stockItemId=${encodeURIComponent(stockItemId)}&changeInQty=${changeInQty}&locationId=${encodeURIComponent(locationId)}&notes=${encodeURIComponent(notes)}`
-		});
-		if (!r.ok) {
+		let lastError = '';
+		for (const { ep, body } of attempts) {
+			const r = await fetch(`${s.server}/api/${ep}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
+				body
+			});
+			if (r.ok) {
+				console.log(`[Stock Count] ${ep} | ${staffName} | ${sku} | ${changeInQty > 0 ? '+' : ''}${changeInQty}`);
+				appendLog({ type: 'count', timestamp: new Date().toISOString(), user: staffName, sku: sku || stockItemId, title: title || '', changeInQty, locationId });
+				return res.json({ success: true, endpoint: ep });
+			}
 			const txt = await r.text();
-			throw new Error(`AdjustStockLevel failed: ${r.status} ${txt}`);
+			if (r.status !== 404) {
+				// Real error (not just wrong endpoint) — stop trying
+				return res.status(500).json({ error: `${ep} failed: ${r.status} ${txt}` });
+			}
+			lastError = `${ep}: 404`;
 		}
-		console.log(`[Stock Count] ${staffName} | ${sku} | ${changeInQty > 0 ? '+' : ''}${changeInQty}`);
-		// Log to Redis
-		appendLog({
-			type: 'count',
-			timestamp: new Date().toISOString(),
-			user: staffName,
-			sku: sku || stockItemId,
-			title: title || '',
-			changeInQty,
-			locationId
-		});
-		res.json({ success: true });
+		res.status(500).json({ error: `No working adjustment endpoint found. Last: ${lastError}` });
 	} catch (e) {
 		res.status(500).json({ error: e.message });
 	}
