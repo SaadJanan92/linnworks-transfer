@@ -145,14 +145,14 @@ position: sticky;
 top: 0;
 z-index: 100;
 }
-header h1 { font-size: 17px; font-weight: 600; }
+header h1 { font-size: 15px; font-weight: 600; }
 
-.header-right { display: flex; align-items: center; gap: 8px; }
+.header-right { display: flex; align-items: center; gap: 5px; }
 
 #userBadge {
-font-size: 12px;
+font-size: 11px;
 font-weight: 700;
-padding: 4px 12px;
+padding: 4px 9px;
 border-radius: 20px;
 background: #00c896;
 color: white;
@@ -350,7 +350,7 @@ transition: transform 0.3s; z-index: 999;
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Stock Count tab ──────────────────────────────────────────────────────── */
-.tab-btn { font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 20px; background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); border: none; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
+.tab-btn { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 20px; background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); border: none; cursor: pointer; font-family: inherit; transition: all 0.2s; white-space: nowrap; }
 .tab-btn.active { background: #f59e0b; color: white; }
 .binrack-hero-bar { background: #1a1a2e; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
 .binrack-hero-bar .rack-name { font-size: 28px; font-weight: 900; color: #f59e0b; letter-spacing: 2px; }
@@ -409,9 +409,10 @@ style="position:absolute;right:0;top:0;bottom:0;width:44px;background:none;borde
 <div class="header-right">
 <button id="tabTransfer" class="tab-btn active" onclick="switchTab('transfer')">📦 Transfer</button>
 <button id="tabCount" class="tab-btn" onclick="switchTab('count')">🔢 Count</button>
+<button id="cntHistoryBtn" onclick="cntShowHistory()" style="display:none;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,0.15);color:white;border:none;cursor:pointer;font-family:inherit;">📋 History</button>
 <button id="historyBtn" onclick="showHistory()" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,0.15);color:white;border:none;cursor:pointer;font-family:inherit;">📋 History</button>
 <div id="userBadge">—</div>
-<button id="logoutBtn" onclick="doLogout()">Sign Out</button>
+<button id="logoutBtn" onclick="doLogout()" title="Sign Out">⏻</button>
 </div>
 </header>
 
@@ -524,6 +525,20 @@ style="position:absolute;right:0;top:0;bottom:0;width:44px;background:none;borde
 </div>
 
 </div><!-- /#countView -->
+
+<!-- Count history modal -->
+<div id="cntHistoryModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;">
+<div style="background:white;border-radius:14px;width:100%;max-width:600px;margin:0 auto;">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #f0f2f5;">
+<div style="font-size:16px;font-weight:700;">📋 Count History</div>
+<div style="display:flex;gap:8px;align-items:center;">
+<button onclick="cntExportCSV()" style="background:#f59e0b;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">⬇ Export</button>
+<button onclick="cntCloseHistory()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;padding:0;">✕</button>
+</div>
+</div>
+<div id="cntHistoryBody" style="padding:12px 16px;max-height:65vh;overflow-y:auto;"></div>
+</div>
+</div>
 
 <!-- Diff confirm modal (count) -->
 <div id="cntDiffModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;">
@@ -1300,8 +1315,8 @@ function switchTab(tab) {
   document.getElementById('countView').style.display    = tab === 'count'    ? '' : 'none';
   document.getElementById('tabTransfer').classList.toggle('active', tab === 'transfer');
   document.getElementById('tabCount').classList.toggle('active', tab === 'count');
-  // hide history button on count tab (history is transfer-only for now)
-  document.getElementById('historyBtn').style.display = tab === 'transfer' ? '' : 'none';
+  document.getElementById('historyBtn').style.display    = tab === 'transfer' ? '' : 'none';
+  document.getElementById('cntHistoryBtn').style.display = tab === 'count'    ? '' : 'none';
   if (tab === 'count') {
     cntLoadLocations();
     document.getElementById('cntBinRackInput').focus();
@@ -1420,20 +1435,22 @@ function cntGetSysQty(sku) {
 
 // ── Render ─────────────────────────────────────────────────────────────────────
 function cntRenderList() {
-  const entries = Object.values(cntItems);
+  const entries = Object.entries(cntItems); // [key, item] — key is always uppercase
   document.getElementById('cntListCard').style.display = (entries.length || cntBinRack) ? 'block' : 'none';
   if (!entries.length) {
     document.getElementById('cntListBody').innerHTML = '<div class="empty-state"><div class="icon">📷</div><p>No items scanned yet</p></div>';
     return;
   }
-  document.getElementById('cntListBody').innerHTML = entries.map(item => {
-    const sysQty = cntGetSysQty(item.sku);
+  document.getElementById('cntListBody').innerHTML = entries.map(([key, item]) => {
+    const sysQty = cntGetSysQty(key);
     let badge = '';
     if (item.unknown)            badge = '<span class="cnt-badge cnt-badge-unk">? Not found</span>';
     else if (sysQty === 0)       badge = '<span class="cnt-badge cnt-badge-new">NEW</span>';
     else if (item.qty > sysQty)  badge = `<span class="cnt-badge cnt-badge-under">+${item.qty - sysQty} vs system</span>`;
     else if (item.qty < sysQty)  badge = `<span class="cnt-badge cnt-badge-over">−${sysQty - item.qty} vs system</span>`;
     else                         badge = '<span class="cnt-badge cnt-badge-match">✓ Match</span>';
+    // Use key (uppercase) in onclick — avoids case-mismatch bug
+    const safeKey = key.replace(/'/g, "\\'");
     return `
       <div class="cnt-item-row">
         <div style="flex:1;min-width:0;">
@@ -1441,9 +1458,9 @@ function cntRenderList() {
           <div style="font-size:12px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.title||'—')}</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <button class="cnt-qty-btn" onclick="cntAdjustQty('${esc(item.sku)}',-1)">−</button>
+          <button class="cnt-qty-btn" onclick="cntAdjustQty('${safeKey}',-1)">−</button>
           <div style="font-size:22px;font-weight:900;min-width:36px;text-align:center;">${item.qty}</div>
-          <button class="cnt-qty-btn" onclick="cntAdjustQty('${esc(item.sku)}',1)">+</button>
+          <button class="cnt-qty-btn" onclick="cntAdjustQty('${safeKey}',1)">+</button>
         </div>
       </div>`;
   }).join('');
@@ -1521,23 +1538,30 @@ async function cntCommit() {
   if (!changes.length) { cntCloseDiff(); cntClearAll(); return; }
   const btn = document.getElementById('cntCommitBtn');
   btn.disabled = true; btn.textContent = 'Committing…';
-  let ok = 0, fail = 0;
+  let ok = 0; const errors = [];
   for (const c of changes) {
     try {
-      await api('/api/count-adjust', 'POST', { stockItemId: c.stockItemId, locationId: c.locationId, changeInQty: c.delta, sku: c.sku });
+      await api('/api/count-adjust', 'POST', { stockItemId: c.stockItemId, locationId: c.locationId, changeInQty: c.delta, sku: c.sku, title: c.title });
       ok++;
-    } catch (e) { fail++; console.error('Adjust failed:', c.sku, e.message); }
+    } catch (e) {
+      errors.push(`${c.sku}: ${e.message}`);
+      console.error('Adjust failed:', c.sku, e.message);
+    }
   }
   cntCloseDiff();
-  btn.disabled = false; btn.textContent = `✅ Commit ${changes.length} change${changes.length !== 1 ? 's' : ''}`;
+  btn.disabled = false;
+  btn.textContent = `✅ Commit ${changes.length} change${changes.length !== 1 ? 's' : ''}`;
   btn.onclick = cntCommit;
-  if (fail === 0) {
+
+  if (errors.length === 0) {
     playTransferComplete();
     toast(`✓ ${ok} adjustment${ok !== 1 ? 's' : ''} committed!`, 'ok');
-    setTimeout(cntClearAll, 1500);
   } else {
-    toast(`${ok} done, ${fail} failed`, 'err');
+    toast(`${ok} done, ${errors.length} failed — check console`, 'err');
+    console.error('Failed adjustments:', errors);
   }
+  // Always clear the screen after committing
+  setTimeout(cntClearAll, 1500);
 }
 
 function cntClearAll() {
@@ -1548,6 +1572,63 @@ function cntClearAll() {
   document.getElementById('cntSkuInput').value = '';
   cntRenderList(); cntUpdateHero();
   document.getElementById('cntListCard').style.display = 'none';
+}
+
+// ── Count History ──────────────────────────────────────────────────────────────
+async function cntShowHistory() {
+  const modal = document.getElementById('cntHistoryModal');
+  const body  = document.getElementById('cntHistoryBody');
+  modal.style.display = 'flex';
+  body.innerHTML = '<div style="text-align:center;padding:30px;color:#aaa;"><span class="spinner"></span> Loading…</div>';
+  try {
+    const logs = await api('/api/count-logs?limit=10000');
+    if (!logs.length) {
+      body.innerHTML = '<div style="text-align:center;padding:40px;color:#bbb;font-size:14px;">No count history yet</div>';
+      return;
+    }
+    let lastDate = '';
+    body.innerHTML = logs.map(e => {
+      const dt = new Date(e.timestamp);
+      const dateStr = dt.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+      const timeStr = dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+      const dateHeader = dateStr !== lastDate
+        ? `<div style="font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:0.5px;padding:14px 0 6px;border-top:${lastDate?'2px solid #f0f2f5':'none'}">${dateStr}</div>`
+        : '';
+      lastDate = dateStr;
+      const sign  = e.changeInQty > 0 ? '+' : '';
+      const color = e.changeInQty > 0 ? '#00c896' : '#dc2626';
+      return `${dateHeader}
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #f5f5f8;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:monospace;font-size:13px;font-weight:700;">${esc(e.sku)}</div>
+            <div style="font-size:11px;color:#888;">${esc(e.title||'')} · ${esc(e.user)} · ${timeStr}</div>
+          </div>
+          <div style="font-size:18px;font-weight:900;color:${color};flex-shrink:0;">${sign}${e.changeInQty}</div>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    body.innerHTML = `<div style="text-align:center;padding:30px;color:#dc2626;">Failed to load history</div>`;
+  }
+}
+
+function cntCloseHistory() { document.getElementById('cntHistoryModal').style.display = 'none'; }
+
+async function cntExportCSV() {
+  try {
+    const logs = await api('/api/count-logs?limit=10000');
+    if (!logs.length) { toast('No history to export', 'err'); return; }
+    const rows = [['Date','Time','User','SKU','Title','Change']];
+    for (const e of logs) {
+      const dt = new Date(e.timestamp);
+      rows.push([dt.toLocaleDateString('en-GB'), dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}), e.user||'', e.sku||'', e.title||'', e.changeInQty]);
+    }
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download = `count-history-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    toast('Downloading…', 'ok');
+  } catch (e) { toast('Export failed', 'err'); }
 }
 
 // Counter-rotate page when device is flipped upside down
