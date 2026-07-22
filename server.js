@@ -522,6 +522,26 @@ res.status(500).json({ error: e.message });
 }
 });
 
+// ─── POST /api/count-adjust ───────────────────────────────────────────────────
+// Called by the Stock Count tab to adjust stock level by a delta
+app.post('/api/count-adjust', requireAuth, async (req, res) => {
+	const { stockItemId, locationId, changeInQty, sku } = req.body;
+	if (!stockItemId || !locationId || changeInQty === undefined) {
+		return res.status(400).json({ error: 'stockItemId, locationId and changeInQty required' });
+	}
+	const staffName = req.user ? req.user.displayName : 'Unknown';
+	const notes = `Stock Count by ${staffName}`;
+	try {
+		await lwPost('Inventory/AdjustStockLevel',
+			`stockItemId=${encodeURIComponent(stockItemId)}&changeInQty=${changeInQty}&locationId=${encodeURIComponent(locationId)}&notes=${encodeURIComponent(notes)}`
+		);
+		console.log(`[Stock Count] ${staffName} | ${sku} | ${changeInQty > 0 ? '+' : ''}${changeInQty}`);
+		res.json({ success: true });
+	} catch (e) {
+		res.status(500).json({ error: e.message });
+	}
+});
+
 // ─── Serve frontend ───────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
 res.sendFile(path.join(__dirname, 'public', 'index.html'));
