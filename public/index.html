@@ -1181,16 +1181,21 @@ setTimeout(() => beep(1400, 0.25), 280);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-async function api(url, method = 'GET', body = null) {
+async function api(url, method = 'GET', body = null, timeoutMs = 30000) {
+const controller = new AbortController();
+const timer = setTimeout(() => controller.abort(), timeoutMs);
 const opts = {
 method,
 headers: {
 'Content-Type': 'application/json',
 'x-auth-token': authToken || ''
-}
+},
+signal: controller.signal
 };
 if (body) opts.body = JSON.stringify(body);
+try {
 const r = await fetch(url, opts);
+clearTimeout(timer);
 if (r.status === 401) {
 // Session expired — force logout
 toast('Session expired — please sign in again', 'err');
@@ -1200,6 +1205,11 @@ throw new Error('Not authenticated');
 const data = await r.json();
 if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
 return data;
+} catch (e) {
+clearTimeout(timer);
+if (e.name === 'AbortError') throw new Error('Connection timed out — check WiFi and retry');
+throw e;
+}
 }
 
 if ('serviceWorker' in navigator) {
