@@ -178,19 +178,31 @@ console.log('✅ Linnworks session obtained, server:', session.server);
 return session;
 }
 
-// ─── Helper: POST to Linnworks API ───────────────────────────────────────────
-async function lwPost(endpoint, bodyStr) {
+// ─── Helper: POST to Linnworks API (20s timeout) ─────────────────────────────
+async function lwPost(endpoint, bodyStr, timeoutMs = 20000) {
 const s = await getSession();
+const controller = new AbortController();
+const timer = setTimeout(() => controller.abort(), timeoutMs);
+try {
 const res = await fetch(`${s.server}/api/${endpoint}`, {
 method: 'POST',
 headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': s.token },
-body: bodyStr
+body: bodyStr,
+signal: controller.signal
 });
+clearTimeout(timer);
 if (!res.ok) {
 const txt = await res.text();
 throw new Error(`${endpoint} failed: ${res.status} ${txt}`);
 }
-return res.json();
+const text = await res.text();
+if (!text) return {};
+try { return JSON.parse(text); } catch(_) { return {}; }
+} catch (e) {
+clearTimeout(timer);
+if (e.name === 'AbortError') throw new Error(`Linnworks API timed out (${endpoint})`);
+throw e;
+}
 }
 
 // ─── GET /api/health ──────────────────────────────────────────────────────────
@@ -454,6 +466,7 @@ moveId: moveId || null
 
 res.json({ success: true, srcBinRackId: srcId, dstBinRackId: dstId, batchInventoryId, moveId });
 } catch (e) {
+console.error('Transfer error:', e.message);
 res.status(500).json({ error: e.message });
 }
 });
