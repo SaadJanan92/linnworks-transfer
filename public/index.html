@@ -1088,13 +1088,12 @@ const transferId = Date.now().toString(36) + Math.random().toString(36).slice(2,
 document.getElementById('sumTo').textContent = to;
 document.getElementById('transferBtn').disabled = true;
 
-// Set all to sending at once
-pending.forEach(item => { item.status = 'sending'; });
-renderList();
-
-// Fire all transfers in parallel using the proven single-item endpoint
 const locationId = document.getElementById('locationSelect').value;
-await Promise.all(pending.map(async item => {
+
+// Process one item at a time — tick each as done before moving to the next
+for (const item of pending) {
+item.status = 'sending';
+renderList();
 try {
 await api('/api/transfer', 'POST', {
 stockItemId: item.stockItemId,
@@ -1108,12 +1107,17 @@ title: item.title,
 transferId
 });
 item.status = 'success';
+// Mark as gone from source bin rack so re-scanning it gets blocked immediately
+if (binRackContents && binRackContents.items) {
+const id = String(item.stockItemId).toLowerCase();
+if (binRackContents.items[id]) binRackContents.items[id].qty = 0;
+}
 } catch (e) {
 item.status = 'error';
 item.error = e.message;
 }
-}));
 renderList();
+}
 
 document.getElementById('transferBtn').disabled = false;
 const done = items.filter(i => i.status === 'success').length;
