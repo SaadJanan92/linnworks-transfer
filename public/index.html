@@ -407,7 +407,10 @@ style="position:absolute;right:0;top:0;bottom:0;width:44px;background:none;borde
 <div class="card-title">2 — Source Bin Rack</div>
 <div class="field">
 <label>📤 From Bin Rack</label>
-<input type="text" id="fromBin" placeholder="Scan source bin rack…" autocomplete="off" />
+<div style="display:flex;gap:8px;align-items:center;">
+<input type="text" id="fromBin" placeholder="Scan source bin rack…" autocomplete="off" style="flex:1;" />
+<button id="refreshBinBtn" onclick="refreshBinRack()" title="Refresh bin rack contents" style="background:#f0f2f5;color:#555;border:none;border-radius:8px;padding:12px 14px;font-size:18px;cursor:pointer;flex-shrink:0;">🔄</button>
+</div>
 </div>
 </div>
 
@@ -499,6 +502,24 @@ style="padding:5px 8px;border:1px solid #e0e4ef;border-radius:6px;font-size:12px
 <div id="toast"></div>
 
 <script>
+// ── Refresh bin rack contents ──────────────────────────────────────────────
+async function refreshBinRack() {
+const binRack = document.getElementById('fromBin').value.trim();
+if (!binRack) { toast('Scan a source bin rack first', 'err'); return; }
+const locationId = document.getElementById('locationSelect').value;
+const btn = document.getElementById('refreshBinBtn');
+btn.textContent = '⏳';
+btn.disabled = true;
+try {
+binRackContents = await api(`/api/binrack-items?locationId=${encodeURIComponent(locationId)}&binRack=${encodeURIComponent(binRack)}`);
+toast(`Refreshed — ${Object.keys(binRackContents.items).length} SKUs in ${binRack}`, 'ok');
+} catch (_) {
+toast('Could not refresh bin rack', 'err');
+}
+btn.textContent = '🔄';
+btn.disabled = false;
+}
+
 // ── History ────────────────────────────────────────────────────────────────
 async function showHistory() {
 const modal = document.getElementById('historyModal');
