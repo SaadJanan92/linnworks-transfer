@@ -1206,7 +1206,7 @@ setTimeout(() => beep(1400, 0.25), 280);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-async function api(url, method = 'GET', body = null, timeoutMs = 30000) {
+async function api(url, method = 'GET', body = null, timeoutMs = 60000) {
 const controller = new AbortController();
 const timer = setTimeout(() => controller.abort(), timeoutMs);
 const opts = {
