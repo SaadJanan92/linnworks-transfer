@@ -37,11 +37,11 @@ async function appendLog(entry) {
 if (!REDIS_URL) return;
 try {
 await redis('lpush', 'transfer_logs', JSON.stringify(entry));
-await redis('ltrim', 'transfer_logs', '0', '49999'); // keep max 50k
+await redis('ltrim', 'transfer_logs', '0', '499999'); // keep max 500k
 } catch (e) { console.error('Log error:', e.message); }
 }
 
-async function readLog(limit = 50000) {
+async function readLog(limit = 500000) {
 if (!REDIS_URL) return [];
 try {
 const items = await redis('lrange', 'transfer_logs', '0', String(limit - 1));
