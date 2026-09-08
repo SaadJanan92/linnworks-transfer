@@ -307,7 +307,7 @@ const searchRes = await lwPost('Stock/SearchBinracks',
 `request=${encodeURIComponent(JSON.stringify({ BinRack: binRack, LocationId: locationId, StockItemId: '00000000-0000-0000-0000-000000000000', PageNumber: 1 }))}`
 );
 const binRacks = searchRes.BinRacks || [];
-const found = binRacks.find(b => b.BinRack === binRack) || binRacks[0];
+const found = binRacks.find(b => b.BinRack === binRack);
 if (!found) return res.status(404).json({ error: `Bin rack "${binRack}" not found` });
 
 const skuRes = await lwPost('Stock/GetBinrackSkus',
@@ -396,17 +396,15 @@ const srcRes = await lwPost('Stock/SearchBinracks',
 `request=${encodeURIComponent(JSON.stringify({ BinRack: fromBinRack, LocationId: locationId, StockItemId: stockItemId, PageNumber: 1 }))}`
 );
 const srcBinRacks = srcRes.BinRacks || [];
-const srcBinRack = srcBinRacks.find(b => b.BinRack === fromBinRack) || srcBinRacks[0];
+const srcBinRack = srcBinRacks.find(b => b.BinRack === fromBinRack);
 if (!srcBinRack) return res.status(404).json({ error: `Source bin rack "${fromBinRack}" not found in WMS` });
 const srcId = srcBinRack.BinRackId;
 
-// ── FIX: use null GUID for destination so it finds the bin rack even if
-//         the item isn't there yet (which is the whole point of a transfer)
 const dstRes = await lwPost('Stock/SearchBinracks',
 `request=${encodeURIComponent(JSON.stringify({ BinRack: toBinRack, LocationId: locationId, StockItemId: '00000000-0000-0000-0000-000000000000', PageNumber: 1 }))}`
 );
 const dstBinRacks = dstRes.BinRacks || [];
-const dstBinRack = dstBinRacks.find(b => b.BinRack === toBinRack) || dstBinRacks[0];
+const dstBinRack = dstBinRacks.find(b => b.BinRack === toBinRack);
 if (!dstBinRack) return res.status(404).json({ error: `Destination bin rack "${toBinRack}" not found in WMS` });
 const dstId = dstBinRack.BinRackId;
 
@@ -484,8 +482,8 @@ lwPost('Stock/SearchBinracks', `request=${encodeURIComponent(JSON.stringify({ Bi
 lwPost('Stock/SearchBinracks', `request=${encodeURIComponent(JSON.stringify({ BinRack: toBinRack, LocationId: locationId, StockItemId: '00000000-0000-0000-0000-000000000000', PageNumber: 1 }))}`),
 ]);
 
-const srcBinRack = (srcRes.BinRacks || []).find(b => b.BinRack === fromBinRack) || (srcRes.BinRacks || [])[0];
-const dstBinRack = (dstRes.BinRacks || []).find(b => b.BinRack === toBinRack) || (dstRes.BinRacks || [])[0];
+const srcBinRack = (srcRes.BinRacks || []).find(b => b.BinRack === fromBinRack);
+const dstBinRack = (dstRes.BinRacks || []).find(b => b.BinRack === toBinRack);
 if (!srcBinRack) return res.status(404).json({ error: `Source bin rack "${fromBinRack}" not found` });
 if (!dstBinRack) return res.status(404).json({ error: `Destination bin rack "${toBinRack}" not found` });
 
