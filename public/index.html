@@ -967,22 +967,32 @@ return;
 
 playSuccess();
 
-let binRackQty = null;
-if (binRackContents && binRackContents.items) {
-const entry = binRackContents.items[String(item.stockItemId).toLowerCase()];
-binRackQty = entry ? entry.qty : 0;
-}
-
-if (binRackQty !== null && binRackQty === 0) {
+// If a source bin rack is set, bin rack contents MUST be loaded before allowing scans
+if (fromBinVal && !binRackContents) {
 playError();
 preview.className = 'notfound';
 preview.innerHTML = `
-<div class="item-title">⚠ Not in this bin rack</div>
+<div class="item-title">⚠ Bin rack not loaded</div>
 <div class="item-sku">${esc(item.title)}</div>
-<div style="font-size:12px;color:#888;margin-top:4px;">Check the correct bin rack for this item</div>`;
+<div style="font-size:12px;color:#888;margin-top:4px;">Tap 🔄 to load ${esc(fromBinVal)} before scanning</div>`;
 document.getElementById('skuInput').value = '';
-// no auto-focus — prevents soft keyboard popping up on Zebra
 return;
+}
+
+if (binRackContents && binRackContents.items) {
+const entry = binRackContents.items[String(item.stockItemId).toLowerCase()];
+const binRackQty = entry ? entry.qty : 0;
+if (binRackQty === 0) {
+playError();
+preview.className = 'notfound';
+preview.innerHTML = `
+<div class="item-title">⚠ Not in ${esc(fromBinVal)}</div>
+<div class="item-sku">${esc(item.title)}</div>
+<div style="font-size:12px;color:#888;margin-top:4px;">This item is not in the source bin rack</div>`;
+document.getElementById('skuInput').value = '';
+document.getElementById('qtyInput').value = 1;
+return;
+}
 }
 
 const existing = items.find(i => i.sku.trim().toLowerCase() === item.sku.trim().toLowerCase());
