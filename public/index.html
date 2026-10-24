@@ -979,9 +979,10 @@ document.getElementById('skuInput').value = '';
 return;
 }
 
+let binRackQty = null;
 if (binRackContents && binRackContents.items) {
 const entry = binRackContents.items[String(item.stockItemId).toLowerCase()];
-const binRackQty = entry ? entry.qty : 0;
+binRackQty = entry ? entry.qty : 0;
 if (binRackQty === 0) {
 playError();
 preview.className = 'notfound';
